@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>픽셀 문어</title>
+
+  <!-- ==================================================
+       CSS : 색깔, 크기, 모양을 정하는 곳
+       ================================================== -->
+  <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;            /* 화면 밖으로 넘친 건 안 보이게 */
+      font-family: "Malgun Gothic", sans-serif;
+      /* 배경 : 위는 하늘색, 아래는 연한 보라색 */
+      background: linear-gradient(#bfe3ff, #f3e8ff);
+    }
+
+    /* 문어가 들어 있는 상자 */
+    #octo {
+      position: absolute;          /* 화면 아무 곳에나 놓을 수 있게 */
+      width: 120px;
+      cursor: pointer;
+    }
+
+    /* 문어 그림 */
+    #octo img {
+      width: 100%;
+      display: block;
+      image-rendering: pixelated;  /* 작은 그림을 키워도 픽셀이 또렷하게 */
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+
+    /* 바닥 그림자 */
+    #shadow {
+      width: 70%;
+      height: 10px;
+      margin: 4px auto 0;
+      background: rgba(0, 0, 0, 0.12);
+      border-radius: 50%;
+    }
+
+    /* 점프! (클릭했을 때) */
+    .jump { animation: jump 0.5s; }   /* 말풍선도 같이 뛰어요 */
+    @keyframes jump {
+      0%   { transform: translateY(0)     scale(1, 1); }
+      20%  { transform: translateY(0)     scale(1.2, 0.8); }  /* 납작하게 움츠리고 */
+      50%  { transform: translateY(-60px) scale(0.9, 1.1); }  /* 길쭉하게 뛰어오르기 */
+      100% { transform: translateY(0)     scale(1, 1); }
+    }
+
+    /* 잘 때 : 천천히 숨쉬기 */
+    .sleep img { animation: breathe 2s infinite; }
+    @keyframes breathe {
+      0%, 100% { transform: scale(1, 1); }
+      50%      { transform: scale(1.05, 0.95); }
+    }
+
+    /* 말풍선 */
+    #bubble {
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      margin-bottom: 8px;
+      padding: 6px 12px;
+      background: white;
+      border: 2px solid #333;
+      border-radius: 12px;
+      font-size: 15px;
+      white-space: nowrap;
+      display: none;               /* 처음엔 숨기기 */
+      z-index: 1;                  /* 문어가 점프해도 말풍선이 가려지지 않게 */
+    }
+
+    /* 하트, Z 처럼 위로 날아가는 작은 글자 */
+    .float {
+      position: absolute;
+      font-size: 24px;
+      pointer-events: none;        /* 클릭 방해 안 하게 */
+      animation: floatUp 1.2s forwards;
+    }
+    @keyframes floatUp {
+      from { transform: translateY(0);     opacity: 1; }
+      to   { transform: translateY(-70px); opacity: 0; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ==================================================
+       HTML : 화면에 보이는 것들
+       ================================================== -->
+  <div id="octo">
+    <div id="bubble">안녕!</div>
+    <img id="octoImg" alt="픽셀 문어" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAjCAYAAADSQImyAAAAfklEQVR42mNkwAEeVIf8ZxhEQKF1DSM2cSaGIQ6GvAcYB3OyISY5jSahAU9CQyXZDNsYGPXAqAdGugdYSNXgvfwOVvGtkSoDYs5oEhr1wKgHRj0w6oHR5vRoc3rUA6MeGPXA6LgQw+i40LBIQsQkJ1yjxAOldzQJjXpgpHsAAPHZI59m00cgAAAAAElFTkSuQmCC">
+    <div id="shadow"></div>
+  </div>
+
+  <!-- ==================================================
+       JavaScript : 움직이게 하는 곳
+       ================================================== -->
+  <script>
+    // ----- 1. 바꿔볼 수 있는 설정 -----
+    const SPEED = 1.5;    // 걷는 속도 (숫자가 크면 빨라요)
+    const WORDS = ["심심해~", "뭐 해?", "♪ 룰루~", "놀아줘!", "오늘도 화이팅!", "배고파..."];
+
+    // ----- 2. 필요한 것들 찾아두기 -----
+    const octo = document.getElementById("octo");
+    const bubble = document.getElementById("bubble");
+
+    // ----- 3. 문어의 상태 -----
+    let x = window.innerWidth / 2;    // 지금 위치 (가로)
+    let y = window.innerHeight / 2;   // 지금 위치 (세로)
+    let goalX = x;                    // 가고 싶은 곳 (가로)
+    let goalY = y;                    // 가고 싶은 곳 (세로)
+    let mode = "rest";                // walk 걷기, rest 쉬기, sleep 자기
+    let restTime = 60;                // 쉬는 시간이 얼마나 남았는지
+    let steps = 0;                    // 걸은 거리 (통통 튀는 데 써요)
+    let bubbleTimer = null;
+
+    // ----- 4. 말풍선 띄우기 -----
+    function say(text) {
+      bubble.textContent = text;
+      bubble.style.display = "block";
+      clearTimeout(bubbleTimer);
+      bubbleTimer = setTimeout(function () {
+        bubble.style.display = "none";
+      }, 2000);   // 2초 뒤에 사라져요
+    }
+
+    // ----- 5. 하트나 Z 날리기 -----
+    function floatText(text) {
+      const f = document.createElement("div");
+      f.className = "float";
+      f.textContent = text;
+      f.style.left = (x + 40 + Math.random() * 40) + "px";
+      f.style.top = (y - 10) + "px";
+      document.body.appendChild(f);
+      setTimeout(function () { f.remove(); }, 1200);
+    }
+
+    // ----- 6. 새로 갈 곳 정하기 (화면 안의 아무 곳) -----
+    function pickNewGoal() {
+      goalX = Math.random() * (window.innerWidth - 140) + 10;
+      goalY = Math.random() * (window.innerHeight - 160) + 60;
+      mode = "walk";
+    }
+
+    // ----- 7. 문어를 클릭하면 : 점프 + 하트 -----
+    octo.addEventListener("click", function (event) {
+      event.stopPropagation();   // 아래 "빈 곳 클릭"까지 같이 실행되지 않게
+
+      if (mode === "sleep") {
+        mode = "rest";
+        restTime = 60;
+        octo.classList.remove("sleep");
+        say("으앗, 깼다!");
+      } else {
+        say("헤헤 💕");
+      }
+
+      octo.classList.remove("jump");
+      void octo.offsetWidth;       // 점프를 처음부터 다시 하게 하는 요령
+      octo.classList.add("jump");
+      floatText("💖");
+    });
+
+    // ----- 8. 빈 곳을 클릭하면 : 그곳으로 걸어가기 -----
+    document.body.addEventListener("click", function (event) {
+      octo.classList.remove("sleep");
+      goalX = event.clientX - 60;
+      goalY = event.clientY - 50;
+      mode = "walk";
+      say("가는 중~!");
+    });
+
+    // ----- 9. 매 순간 반복 : 문어 움직이기 -----
+    function update() {
+      let hop = 0;   // 위로 살짝 뜨는 높이
+
+      if (mode === "walk") {
+        // 가고 싶은 곳까지 남은 거리
+        const dx = goalX - x;
+        const dy = goalY - y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance < SPEED) {
+          // 도착! 잠깐 쉬기
+          mode = "rest";
+          restTime = 100 + Math.random() * 200;
+        } else {
+          // 목표 쪽으로 한 걸음
+          x += dx / distance * SPEED;
+          y += dy / distance * SPEED;
+          steps += SPEED;
+          hop = Math.abs(Math.sin(steps / 8)) * 8;   // 통통 튀기
+        }
+      }
+      else if (mode === "rest") {
+        restTime -= 1;
+        if (restTime <= 0) {
+          const dice = Math.random();   // 0 ~ 1 사이의 무작위 숫자
+          if (dice < 0.15) {
+            mode = "sleep";             // 15% : 잠자기
+            octo.classList.add("sleep");
+            say("졸려... 😪");
+          } else {
+            if (dice < 0.4) say(WORDS[Math.floor(Math.random() * WORDS.length)]);
+            pickNewGoal();              // 나머지 : 다른 곳으로 가기
+          }
+        }
+      }
+      else if (mode === "sleep") {
+        if (Math.random() < 0.01) floatText("💤");
+        if (Math.random() < 0.001) {    // 가끔 스스로 일어나요
+          octo.classList.remove("sleep");
+          say("잘 잤다! ☀️");
+          pickNewGoal();
+        }
+      }
+
+      // 문어를 화면에 그리기
+      octo.style.left = x + "px";
+      octo.style.top = (y - hop) + "px";
+
+      requestAnimationFrame(update);   // 다음 화면에서 또 반복
+    }
+
+    // ----- 10. 시작! -----
+    say("안녕! 나는 픽셀 문어야!");
+    update();
+  </script>
+</body>
+</html>
