@@ -1,239 +1,1440 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>픽셀 문어</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>크루즈 살인사건</title>
 
-  <!-- ==================================================
-       CSS : 색깔, 크기, 모양을 정하는 곳
-       ================================================== -->
-  <style>
-    html, body {
-      margin: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;            /* 화면 밖으로 넘친 건 안 보이게 */
-      font-family: "Malgun Gothic", sans-serif;
-      /* 배경 : 위는 하늘색, 아래는 연한 보라색 */
-      background: linear-gradient(#bfe3ff, #f3e8ff);
-    }
-
-    /* 문어가 들어 있는 상자 */
-    #octo {
-      position: absolute;          /* 화면 아무 곳에나 놓을 수 있게 */
-      width: 120px;
-      cursor: pointer;
-    }
-
-    /* 문어 그림 */
-    #octo img {
-      width: 100%;
-      display: block;
-      image-rendering: pixelated;  /* 작은 그림을 키워도 픽셀이 또렷하게 */
-      user-select: none;
-      -webkit-user-drag: none;
-    }
-
-    /* 바닥 그림자 */
-    #shadow {
-      width: 70%;
-      height: 10px;
-      margin: 4px auto 0;
-      background: rgba(0, 0, 0, 0.12);
-      border-radius: 50%;
-    }
-
-    /* 점프! (클릭했을 때) */
-    .jump { animation: jump 0.5s; }   /* 말풍선도 같이 뛰어요 */
-    @keyframes jump {
-      0%   { transform: translateY(0)     scale(1, 1); }
-      20%  { transform: translateY(0)     scale(1.2, 0.8); }  /* 납작하게 움츠리고 */
-      50%  { transform: translateY(-60px) scale(0.9, 1.1); }  /* 길쭉하게 뛰어오르기 */
-      100% { transform: translateY(0)     scale(1, 1); }
-    }
-
-    /* 잘 때 : 천천히 숨쉬기 */
-    .sleep img { animation: breathe 2s infinite; }
-    @keyframes breathe {
-      0%, 100% { transform: scale(1, 1); }
-      50%      { transform: scale(1.05, 0.95); }
-    }
-
-    /* 말풍선 */
-    #bubble {
-      position: absolute;
-      bottom: 100%;
-      left: 50%;
-      transform: translateX(-50%);
-      margin-bottom: 8px;
-      padding: 6px 12px;
-      background: white;
-      border: 2px solid #333;
-      border-radius: 12px;
-      font-size: 15px;
-      white-space: nowrap;
-      display: none;               /* 처음엔 숨기기 */
-      z-index: 1;                  /* 문어가 점프해도 말풍선이 가려지지 않게 */
-    }
-
-    /* 하트, Z 처럼 위로 날아가는 작은 글자 */
-    .float {
-      position: absolute;
-      font-size: 24px;
-      pointer-events: none;        /* 클릭 방해 안 하게 */
-      animation: floatUp 1.2s forwards;
-    }
-    @keyframes floatUp {
-      from { transform: translateY(0);     opacity: 1; }
-      to   { transform: translateY(-70px); opacity: 0; }
-    }
-  </style>
+<!-- =====================================================
+     CSS : 화면 꾸미기
+     게임 화면(캔버스)을 창 크기에 맞게 가운데에 놓아요.
+     ===================================================== -->
+<style>
+  html, body { margin: 0; height: 100%; background: #0b0f1a; }
+  body { display: flex; align-items: center; justify-content: center; }
+  canvas {
+    image-rendering: pixelated;                 /* 픽셀을 또렷하게 */
+    width: min(100vw, calc(100vh * 640 / 416)); /* 창에 꽉 차게 */
+    height: auto;
+  }
+</style>
 </head>
 <body>
+<canvas id="game" width="640" height="416"></canvas>
 
-  <!-- ==================================================
-       HTML : 화면에 보이는 것들
-       ================================================== -->
-  <div id="octo">
-    <div id="bubble">안녕!</div>
-    <img id="octoImg" alt="픽셀 문어" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADAAAAAjCAYAAADSQImyAAAAfklEQVR42mNkwAEeVIf8ZxhEQKF1DSM2cSaGIQ6GvAcYB3OyISY5jSahAU9CQyXZDNsYGPXAqAdGugdYSNXgvfwOVvGtkSoDYs5oEhr1wKgHRj0w6oHR5vRoc3rUA6MeGPXA6LgQw+i40LBIQsQkJ1yjxAOldzQJjXpgpHsAAPHZI59m00cgAAAAAElFTkSuQmCC">
-    <div id="shadow"></div>
-  </div>
+<script>
+// =====================================================
+//  크루즈 살인사건 — 오로라호의 밤
+//  조작: 방향키 이동 / Space·Enter 말걸기·조사 / C 단서 수첩 / X 취소
+// =====================================================
 
-  <!-- ==================================================
-       JavaScript : 움직이게 하는 곳
-       ================================================== -->
-  <script>
-    // ----- 1. 바꿔볼 수 있는 설정 -----
-    const SPEED = 1.5;    // 걷는 속도 (숫자가 크면 빨라요)
-    const WORDS = ["심심해~", "뭐 해?", "♪ 룰루~", "놀아줘!", "오늘도 화이팅!", "배고파..."];
+// ----- 1. 기본 설정 -----
+const TILE = 32, COLS = 20, ROWS = 13;      // 한 칸 크기, 가로 칸 수, 세로 칸 수
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const FONT = '"Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
+const SAVE_KEY = "cruiseMurderSave";
 
-    // ----- 2. 필요한 것들 찾아두기 -----
-    const octo = document.getElementById("octo");
-    const bubble = document.getElementById("bubble");
 
-    // ----- 3. 문어의 상태 -----
-    let x = window.innerWidth / 2;    // 지금 위치 (가로)
-    let y = window.innerHeight / 2;   // 지금 위치 (세로)
-    let goalX = x;                    // 가고 싶은 곳 (가로)
-    let goalY = y;                    // 가고 싶은 곳 (세로)
-    let mode = "rest";                // walk 걷기, rest 쉬기, sleep 자기
-    let restTime = 60;                // 쉬는 시간이 얼마나 남았는지
-    let steps = 0;                    // 걸은 거리 (통통 튀는 데 써요)
-    let bubbleTimer = null;
+// ----- 2. 등장인물 -----
+const NAMES = {
+  danbi: "단비", jia: "이지아", captain: "강도현 선장", ceo: "서만석 회장",
+  junho: "서준호", haeun: "윤하은", lena: "레나", doctor: "최민우 박사",
+  minho: "박민호", nurse: "오수진 간호사"
+};
 
-    // ----- 4. 말풍선 띄우기 -----
-    function say(text) {
-      bubble.textContent = text;
-      bubble.style.display = "block";
-      clearTimeout(bubbleTimer);
-      bubbleTimer = setTimeout(function () {
-        bubble.style.display = "none";
-      }, 2000);   // 2초 뒤에 사라져요
+// 생김새 : 머리, 피부, 옷, 바지, 신발 색 (long = 긴 머리, glasses = 안경, hat = 모자)
+const LOOKS = {
+  danbi:   { hair: "#3b2416", skin: "#f5d0b0", shirt: "#d9a521", pants: "#5a3d2b", shoes: "#2b1d14" },
+  jia:     { hair: "#1b1b22", skin: "#f3cfae", shirt: "#2b4a8a", pants: "#22335e", shoes: "#111111" },
+  captain: { hair: "#9a9a9a", skin: "#e8c09a", shirt: "#f2f2f2", pants: "#e2e2e2", shoes: "#222222", hat: "#ffffff" },
+  ceo:     { hair: "#d0d0d0", skin: "#e9c3a0", shirt: "#4b2c5e", pants: "#2d1d38", shoes: "#111111" },
+  junho:   { hair: "#d9b44a", skin: "#f2cba8", shirt: "#b8282f", pants: "#22223a", shoes: "#111111" },
+  haeun:   { hair: "#141414", skin: "#f6d5b8", shirt: "#2f2f2f", pants: "#2f2f2f", shoes: "#111111", long: true },
+  lena:    { hair: "#8a2347", skin: "#f4cfb2", shirt: "#8a45b8", pants: "#8a45b8", shoes: "#3a1a4a", long: true },
+  doctor:  { hair: "#5a4030", skin: "#edc7a5", shirt: "#6f8a6a", pants: "#3a3f4a", shoes: "#1a1a1a", glasses: true },
+  minho:   { hair: "#2a2a2a", skin: "#efc8a4", shirt: "#ffffff", pants: "#1a1a1a", shoes: "#111111" },
+  nurse:   { hair: "#4a2a1a", skin: "#f5d3b5", shirt: "#f6c9d6", pants: "#f6c9d6", shoes: "#ffffff", long: true }
+};
+
+// 사람 픽셀 그림 (H 머리, S 피부, E 눈, C 옷, P 바지, B 신발, . 빈칸)
+const BODY_DOWN = [
+  "....HHHH....", "..HHHHHHHH..", "..HHHHHHHH..", "..HSSSSSSH..",
+  "..SSESSESS..", "..SSSSSSSS..", "...SSSSSS...", "....CCCC....",
+  "..CCCCCCCC..", ".SCCCCCCCCS.", ".SCCCCCCCCS.", "..CCCCCCCC..",
+  "..PPPPPPPP..", "..PPP..PPP..", "..PPP..PPP..", "..BBB..BBB.."
+];
+const BODY_UP = [
+  "....HHHH....", "..HHHHHHHH..", "..HHHHHHHH..", "..HHHHHHHH..",
+  "..HHHHHHHH..", "..HHHHHHHH..", "...HHHHHH...", "....CCCC....",
+  "..CCCCCCCC..", ".SCCCCCCCCS.", ".SCCCCCCCCS.", "..CCCCCCCC..",
+  "..PPPPPPPP..", "..PPP..PPP..", "..PPP..PPP..", "..BBB..BBB.."
+];
+const BODY_LEFT = [
+  "....HHHH....", "...HHHHHHH..", "..HHHHHHHH..", "..SSSSSHHH..",
+  "..SESSSSHH..", "..SSSSSSSH..", "...SSSSSS...", "....CCCC....",
+  "...CCCCCC...", "...CSCCCC...", "...CSCCCC...", "...CCCCCC...",
+  "...PPPPPP...", "...PP..PP...", "...PP..PP...", "...BB..BB..."
+];
+
+
+// ----- 3. 단서 목록 -----
+const CLUES = {
+  doctor:      { name: "최 박사의 소견", desc: "최민우 박사의 말: '심장마비로 보인다. 사망 시각은 어젯밤 9시에서 9시 반 사이.'" },
+  teacup:      { name: "찻잔", desc: "탁자 위의 캐모마일 차. 반쯤 마셨다. 이상한 냄새는 나지 않는다." },
+  pillbottle:  { name: "갈색 약병", desc: "회장의 머리맡에 있던 작은 갈색 약병. 라벨이 없다. 하얀 알약이 4알 남아 있다." },
+  emptybottle: { name: "회장의 빈 약병", desc: "회장 가방 속 약국 약병. '수면제'라는 라벨이 붙어 있다. 속은 텅 비어 있다." },
+  cufflink:    { name: "커프스 단추", desc: "카펫 위에 떨어져 있던 금색 커프스 단추. 'J'라는 글자가 새겨져 있다." },
+  cardlog:     { name: "카드키 기록", desc: "스위트룸 출입 기록.\n21:00 회장 본인 카드\n22:00 승무원 카드 (룸서비스)\n22:40 윤하은 비서 카드\n07:00 윤하은 비서 카드" },
+  roomservice: { name: "룸서비스 기록", desc: "밤 10시 정각, 웨이터 민호가 캐모마일 차를 배달했다. 회장은 살아 있었고 '약 먹고 일찍 자야겠다'고 말했다." },
+  junho:       { name: "준호의 진술", desc: "밤 9시에 돈 문제로 회장과 다퉜다. 9시 20분에 방을 나와 새벽까지 라운지에서 술을 마셨다고 한다." },
+  poison:      { name: "알약 검사 결과", desc: "갈색 약병의 알약에서 독성 약품 반응이 나왔다. 겉보기엔 평범한 수면제와 똑같다." },
+  infirmary:   { name: "의무실 기록", desc: "어제 18:30 최민우 박사가 두통약을 받으러 왔다. 간호사가 5분 자리를 비운 사이, 보관함의 독성 약품 한 병이 비었다." },
+  lena:        { name: "레나의 증언", desc: "만찬 때 최 박사가 '마침 같은 약이 있다'며 회장에게 작은 갈색 약병을 건넸다. 맞은편에서 똑똑히 봤다." },
+  speech:      { name: "발표 원고", desc: "하은이 10시 40분에 회장 책상에 두었다가 아침에 다시 가져온 봉투. 회장이 오늘 아침 읽으려던 원고다. 아직 봉해져 있다." },
+  article:     { name: "오래된 신문 기사", desc: "10년 전 기사. '서만석 제약 진통제 부작용… 고교생 최수연(17) 숨져'. 함께 있던 사진 뒷면엔 '수연이와 오빠 민우'라고 적혀 있다." }
+};
+
+
+// ----- 4. 지도 -----
+// 글자 한 개 = 한 칸
+//  # 벽   W 창문벽   (공백) 바깥   ~ 바다   L 난간   D 문
+//  . 나무바닥   , 카펫   = 갑판   w 흰타일   m 철판   S 무대
+//  B 침대   T 탁자   h 의자   K 카운터·책상   P 화분   b 책장
+//  M 약장   c 기계판   H 조타륜   p 피아노   o 구명튜브   g 가방   n 협탁
+const EMPTY = "                    ";
+
+function cabinRows(floor, bag) {
+  const r6 = bag ? "    #,,,,,,T,,g#    " : "    #,,,,,,T,,,#    ";
+  return [EMPTY, "    ############    ", "    #W###W####W#    ",
+    "    #B,,,,,,,,b#    ", "    #B,,,,,,,,,#    ", "    #,,,,,,,,,,#    ",
+    r6, "    #P,,,,,,,,,#    ", "    ######D#####    ",
+    EMPTY, EMPTY, EMPTY, EMPTY].map(r => r.replace(/,/g, floor));
+}
+
+const MAPS = {
+  deck: {
+    name: "갑판", floor: "=",
+    rows: [
+      "~~~~~~~~~~~~~~~~~~~~", "~~~~~~~~~~~~~~~~~~~~", "~LLLLLLLLLLLLLLLLL##",
+      "~L================##", "~L====o======o====##", "~L================##",
+      "~L=================D", "~L================##", "~L===hTh=======P==##",
+      "~L================##", "~LLLLLLLLLLLLLLLLL##", "~~~~~~~~~~~~~~~~~~~~",
+      "~~~~~~~~~~~~~~~~~~~~"
+    ],
+    doors: { "19,6": { to: "hall", x: 1, y: 6, dir: "right" } }
+  },
+  hall: {
+    name: "선실 복도", floor: ",",
+    rows: [
+      "####################", "###D###D###D###D####", "#,,,,,,,,,,,,,,,,,,#",
+      "#P,,,,,,,,,,,,,,,,P#", "#,,,,,,,,,,,,,,,,,,#", "#,,,,,,,,,,,,,,,,,,#",
+      "D,,,,,,,,,,,,,,,,,,D", "#,,,,,,,,,,,,,,,,,,#", "#,,,,,,,,,,,,,,,,,,#",
+      "#P,,,,,,,,,,,,,,,,P#", "#,,,,,,,,,,,,,,,,,,#", "####D####D####D#####",
+      "####################"
+    ],
+    labels: [
+      { x: 3, y: 1.75, t: "내 방" }, { x: 7, y: 1.75, t: "준호 방" }, { x: 11, y: 1.75, t: "최 박사 방" },
+      { x: 15, y: 1.75, t: "스위트룸" }, { x: 4, y: 12, t: "식당" }, { x: 9, y: 12, t: "라운지" },
+      { x: 14, y: 12, t: "의무실" }, { x: 0, y: 5, t: "갑판" }, { x: 19, y: 5, t: "함교" }
+    ],
+    doors: {
+      "3,1":  { to: "cabinD", x: 10, y: 7, dir: "up" },
+      "7,1":  { to: "cabinJ", x: 10, y: 7, dir: "up",
+                locked: () => S.ch !== 3, lockMsg: "준호의 방이다. 문이 잠겨 있다." },
+      "11,1": { to: "cabinM", x: 10, y: 7, dir: "up",
+                locked: () => !S.f.masterKey, lockMsg: "최민우 박사의 방이다. 문이 잠겨 있다." },
+      "15,1": { to: "suite", x: 10, y: 7, dir: "up",
+                locked: () => S.ch === 1, lockMsg: "서만석 회장의 스위트룸이다. 함부로 들어갈 수 없다." },
+      "4,11": { to: "dining", x: 9, y: 8, dir: "up" },
+      "9,11": { to: "lounge", x: 9, y: 8, dir: "up" },
+      "14,11":{ to: "infirmary", x: 9, y: 7, dir: "up" },
+      "0,6":  { to: "deck", x: 18, y: 6, dir: "left" },
+      "19,6": { to: "bridge", x: 1, y: 6, dir: "right" }
     }
+  },
+  cabinD: { name: "내 방", floor: ",", rows: cabinRows(",", false),
+            doors: { "10,8": { to: "hall", x: 3, y: 2, dir: "down" } } },
+  cabinJ: { name: "준호의 방", floor: ",", rows: cabinRows(",", false),
+            doors: { "10,8": { to: "hall", x: 7, y: 2, dir: "down" } } },
+  cabinM: { name: "최 박사의 방", floor: ".", rows: cabinRows(".", true),
+            doors: { "10,8": { to: "hall", x: 11, y: 2, dir: "down" } } },
+  suite: {
+    name: "회장의 스위트룸", floor: ",",
+    rows: [
+      EMPTY, "  ################  ", "  #W###W####W###W#  ",
+      "  #Bn,,,,,,,,,,,K#  ", "  #B,,,,,,,,,,,,K#  ", "  #,,,,,,,,,,,,,,#  ",
+      "  #,,,,hTh,,,,,,g#  ", "  #P,,,,,,,,,,,,P#  ", "  ########D#######  ",
+      EMPTY, EMPTY, EMPTY, EMPTY
+    ],
+    doors: { "10,8": { to: "hall", x: 15, y: 2, dir: "down" } }
+  },
+  dining: {
+    name: "식당", floor: ".",
+    rows: [
+      EMPTY, "####################", "#W###W####W###W###W#",
+      "#..................#", "#..hTTh....hTTh....#", "#..................#",
+      "#..hTTh....hTTh..KK#", "#..................#", "#P................P#",
+      "#########D##########", EMPTY, EMPTY, EMPTY
+    ],
+    doors: { "9,9": { to: "hall", x: 4, y: 10, dir: "down" } }
+  },
+  lounge: {
+    name: "라운지", floor: ",",
+    rows: [
+      EMPTY, "####################", "#W###W###W###W###W##",
+      "#SSSSSS,,,,,,KKKKK,#", "#SSpSSS,,,,,,,,,,,,#", "#,,,,,,,,,,,,,,,,,,#",
+      "#,,,hTh,,,,,hTh,,,,#", "#,,,,,,,,,,,,,,,,,,#", "#P,,,,,,,,,,,,,,,,P#",
+      "#########D##########", EMPTY, EMPTY, EMPTY
+    ],
+    doors: { "9,9": { to: "hall", x: 9, y: 10, dir: "down" } }
+  },
+  infirmary: {
+    name: "의무실", floor: "w",
+    rows: [
+      EMPTY, "    ############    ", "    #W###WW###W#    ",
+      "    #BMMMwwwwwB#    ", "    #Bwwwwwwwwb#    ", "    #wwwwwwwwww#    ",
+      "    #wwwKKwwwww#    ", "    #Pwwwwwwwww#    ", "    #####D######    ",
+      EMPTY, EMPTY, EMPTY, EMPTY
+    ],
+    doors: { "9,8": { to: "hall", x: 14, y: 10, dir: "down" } }
+  },
+  bridge: {
+    name: "함교 (조타실)", floor: "m",
+    rows: [
+      EMPTY, "####################", "#WWWWWWWWWWWWWWWWWW#",
+      "#mmccccmmmmmmccccmm#", "#mmmmmmmmHmmmmmmmmm#", "#mmmmmmmmmmmmmmmmmm#",
+      "Dmmmmmmmmmmmmmmmmmm#", "#mmmmmmmmmmmmmmmmmm#", "#bmmmmmmmmmmmmmmmmb#",
+      "####################", EMPTY, EMPTY, EMPTY
+    ],
+    doors: { "0,6": { to: "hall", x: 18, y: 6, dir: "left" } }
+  }
+};
 
-    // ----- 5. 하트나 Z 날리기 -----
-    function floatText(text) {
-      const f = document.createElement("div");
-      f.className = "float";
-      f.textContent = text;
-      f.style.left = (x + 40 + Math.random() * 40) + "px";
-      f.style.top = (y - 10) + "px";
-      document.body.appendChild(f);
-      setTimeout(function () { f.remove(); }, 1200);
+const SOLID = "#W ~LBTKPbMcHpogn";   // 지나갈 수 없는 칸
+
+
+// ----- 5. 게임 상태 -----
+let S = null;                   // 저장되는 정보 (장, 깃발, 단서, 위치)
+let scene = "title";            // title(시작화면), game(게임 중), end(엔딩)
+let titleIdx = 0;
+const P = { x: 8, y: 6, dir: "right", moving: false, fx: 0, fy: 0, prog: 0, foot: false };
+let busy = false;               // 이벤트(대화) 중이면 true
+let MSG = null, CHOICE = null, NOTE = null, CARD = null, CUT = null;
+let fadeAlpha = 0, fadeTarget = 0, fadeDone = null;
+let frame = 0;
+
+function newState() {
+  return { ch: 1, f: {}, clues: [], map: "deck", x: 8, y: 6, dir: "right" };
+}
+const has = id => S.clues.includes(id);
+
+
+// ----- 6. 저장 / 불러오기 -----
+function save() {
+  if (scene !== "game") return;
+  S.map = S.map; S.x = P.x; S.y = P.y; S.dir = P.dir;
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) {}
+}
+function loadSave() {
+  try { const t = localStorage.getItem(SAVE_KEY); return t ? JSON.parse(t) : null; } catch (e) { return null; }
+}
+function clearSave() {
+  try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
+}
+
+
+// ----- 7. 키보드 -----
+const held = {};
+let pressed = new Set();
+const KEYMAP = {
+  ArrowUp: "up", KeyW: "up", ArrowDown: "down", KeyS: "down",
+  ArrowLeft: "left", KeyA: "left", ArrowRight: "right", KeyD: "right",
+  Space: "ok", Enter: "ok", KeyZ: "ok", KeyX: "cancel", Escape: "cancel", KeyC: "note"
+};
+addEventListener("keydown", e => {
+  const k = KEYMAP[e.code];
+  if (!k) return;
+  e.preventDefault();
+  if (!e.repeat) pressed.add(k);
+  held[k] = true;
+});
+addEventListener("keyup", e => { const k = KEYMAP[e.code]; if (k) held[k] = false; });
+function hit(k) { if (pressed.has(k)) { pressed.delete(k); return true; } return false; }
+
+
+// ----- 8. 이벤트 도우미 (대화, 선택지, 화면 전환) -----
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// 대화창 띄우기 : 키를 누를 때까지 기다려요
+function say(name, text) {
+  return new Promise(resolve => { MSG = { name, text, shown: 0, resolve }; });
+}
+const T = (id, text) => say(NAMES[id], text);   // 등장인물이 말하기
+const narr = text => say(null, text);            // 설명 글
+
+// 선택지 : 고른 번호를 알려줘요
+function choose(question, options) {
+  return new Promise(resolve => { CHOICE = { question, options, idx: 0, resolve }; });
+}
+
+// 단서 수첩 열기 (present = true 면 증거를 골라서 제시)
+function openNote(present) {
+  return new Promise(resolve => { NOTE = { present, idx: 0, resolve }; });
+}
+
+function fadeTo(target) {
+  if (fadeAlpha === target) { fadeTarget = target; return Promise.resolve(); }   // 이미 그 밝기면 바로 끝
+  return new Promise(resolve => { fadeTarget = target; fadeDone = resolve; });
+}
+
+async function chapterCard(title, sub) {
+  await fadeTo(1);
+  CARD = { title, sub };
+  await sleep(2200);
+  CARD = null;
+}
+
+async function addClue(id) {
+  if (has(id)) return;
+  S.clues.push(id);
+  await narr("📒 단서 획득! [" + CLUES[id].name + "]  (C 키로 수첩에서 볼 수 있어요)");
+}
+
+// 다른 지도로 이동
+async function changeMap(id, x, y, dir) {
+  await fadeTo(1);
+  S.map = id; P.x = x; P.y = y; P.dir = dir; P.moving = false;
+  await fadeTo(0);
+  save();
+  await onEnter(id);
+}
+
+// 이벤트 실행 (실행 중엔 플레이어가 못 움직여요)
+function runEvent(fn) {
+  if (busy) return;
+  busy = true;
+  fn().catch(err => console.error(err)).finally(() => { busy = false; save(); });
+}
+
+// NPC 걷기 (컷신용)
+const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+function walkNpc(n, dir, steps) {
+  return new Promise(resolve => { n.walk = { dir, steps, prog: 0, resolve }; n.dir = dir; });
+}
+
+
+// ----- 9. 지도 정보 읽기 -----
+const MAPOF = () => MAPS[S.map];
+function tileAt(x, y) {
+  const m = MAPOF();
+  if (y < 0 || y >= ROWS || x < 0 || x >= COLS) return " ";
+  return m.rows[y][x];
+}
+function npcAt(x, y) { return npcs().find(n => n.x === x && n.y === y && !n.gone); }
+
+
+// ----- 10. 장소마다 있는 사람들 -----
+function N(id, x, y, dir) { return { id, x, y, dir }; }
+
+function npcs() {
+  if (CUT) return CUT;
+  const ch = S.ch, f = S.f, L = [];
+  switch (S.map) {
+    case "deck":
+      if (ch === 1) L.push(N("jia", 10, 5, "down"));
+      if (ch === 2 || ch === 3) L.push(N("doctor", 5, 7, "left"));
+      break;
+    case "hall":
+      if (ch === 2 || ch === 3) L.push(N("jia", 10, 7, "down"));
+      break;
+    case "dining":
+      if (ch === 1 && f.dinner && !f.dinnerDone) {
+        L.push(N("ceo", 5, 3, "down"), N("doctor", 4, 3, "down"), N("haeun", 3, 5, "up"),
+               N("lena", 12, 3, "down"), N("junho", 13, 5, "up"));
+      }
+      if (ch >= 2) L.push(N("haeun", 12, 3, "down"));
+      L.push(N("minho", 17, 5, "down"));
+      break;
+    case "lounge":
+      if (ch === 2) L.push(N("junho", 15, 4, "up"));
+      if (ch >= 2 || f.dinnerDone) L.push(N("lena", 5, 4, "down"));
+      break;
+    case "infirmary": L.push(N("nurse", 9, 5, "down")); break;
+    case "bridge":    L.push(N("captain", 10, 5, "down")); break;
+    case "cabinJ":    if (ch === 3) L.push(N("junho", 9, 5, "down")); break;
+  }
+  return L;
+}
+
+
+// ----- 11. 장소에 들어갈 때 일어나는 일 -----
+async function onEnter(id) {
+  const ch = S.ch, f = S.f;
+  if (id === "deck" && ch === 1 && !f.intro) await introScene();
+  if (id === "dining" && ch === 1 && !f.dinner) await dinnerScene();
+  if (id === "hall" && ch === 1 && f.dinnerDone && !f.argue) await argueScene();
+  if (id === "suite" && ch === 2 && !f.crime) await crimeScene();
+  if (id === "bridge" && ch === 2 && f.ch2done) await chapter3Scene();
+}
+
+
+// =====================================================
+//  12. 이야기 (컷신)
+// =====================================================
+
+// --- 제1장 : 출항 ---
+async function introScene() {
+  await narr("부산항을 떠난 호화 크루즈 '오로라호'. 3박 4일의 바다 여행이 시작되었다.");
+  await T("jia", "어서 오세요! 오로라호 승무원 이지아예요. 혹시... 추리동아리 회장 단비 님 맞으시죠?");
+  await T("danbi", "네! 동아리 추리 대회에서 1등 해서, 상품으로 이 여행권을 받았어요.");
+  await T("jia", "와, 진짜 탐정님이시네요! 저도 추리소설 엄청 좋아해요.");
+  await T("jia", "오늘 저녁 7시에 식당에서 환영 만찬이 있어요. 이 배의 큰손, 서만석 회장님도 오신대요.");
+  await T("jia", "조작법을 알려드릴게요! 방향키로 걷고, 스페이스바로 말을 걸거나 물건을 조사해요.");
+  await T("jia", "그리고 C 키를 누르면 단서 수첩을 볼 수 있어요. 탐정님께 꼭 필요하겠죠?");
+  await T("jia", "오른쪽 문으로 들어가면 선실 복도예요. 식당은 복도 아래쪽 왼쪽 문이에요!");
+  S.f.intro = true;
+}
+
+async function dinnerScene() {
+  S.f.dinner = true;
+  await narr("저녁 7시. 반짝이는 샹들리에 아래, 환영 만찬이 시작되었다.");
+  await T("ceo", "다들 반갑소. 서만석이오. 이번 여행은 내 인생에서 아주 특별한 여행이 될 거요.");
+  await T("ceo", "내일 아침 9시, 라운지에서 중대한 발표를 하겠소. 모두 꼭 와 주시오.");
+  await T("junho", "(작게) 또 무슨 발표래... 설마 유산 얘기는 아니겠지.");
+  await narr("사람들이 웅성거린다. 만찬에 온 사람들과 이야기해 보자.");
+}
+
+async function dinnerTalk(id, lines) {
+  for (const l of lines) await T(id, l);
+  if (!S.f["d_" + id]) {
+    S.f["d_" + id] = true;
+    if (dinnerCount() >= 5) {
+      await narr("만찬이 끝나고 사람들이 하나둘 자리를 떴다.");
+      await narr("시계를 보니 밤 9시가 다 되어 간다. 이제 방으로 돌아가 쉬자.");
+      S.f.dinnerDone = true;
     }
+  }
+}
+const dinnerCount = () => ["ceo", "doctor", "haeun", "lena", "junho"].filter(id => S.f["d_" + id]).length;
 
-    // ----- 6. 새로 갈 곳 정하기 (화면 안의 아무 곳) -----
-    function pickNewGoal() {
-      goalX = Math.random() * (window.innerWidth - 140) + 10;
-      goalY = Math.random() * (window.innerHeight - 160) + 60;
-      mode = "walk";
-    }
+async function argueScene() {
+  S.f.argue = true;
+  await narr("복도로 나오자, 어디선가 큰 소리가 들려왔다.");
+  await say("??? (스위트룸)", "삼촌! 이번 한 번만 도와달라니까요!");
+  await say("??? (스위트룸)", "안 된다! 네 빚은 네가 알아서 갚아라. 나가!");
+  const j = N("junho", 15, 2, "down");
+  CUT = [j];
+  await sleep(300);
+  await narr("스위트룸 문이 벌컥 열리고, 준호가 씩씩거리며 나왔다.");
+  await T("junho", "...뭘 봐? 구경났어?");
+  await walkNpc(j, "down", 4);
+  await walkNpc(j, "left", 6);
+  await walkNpc(j, "down", 5);
+  CUT = null;
+  await narr("준호는 라운지 쪽으로 가 버렸다. 시계는 밤 9시 20분을 가리키고 있다.");
+}
 
-    // ----- 7. 문어를 클릭하면 : 점프 + 하트 -----
-    octo.addEventListener("click", function (event) {
-      event.stopPropagation();   // 아래 "빈 곳 클릭"까지 같이 실행되지 않게
+async function sleepScene() {
+  await fadeTo(1);
+  await sleep(600);
+  await narr("...그날 밤, 파도 소리를 들으며 잠이 들었다.");
+  await chapterCard("제2장", "죽음의 스위트룸");
+  S.ch = 2;
+  await fadeTo(0);
+  await narr("다음 날 아침 7시.");
+  await say("???", "꺄아아아악——!!");
+  await T("danbi", "비명 소리? 복도 쪽이야!");
+  save();
+}
 
-      if (mode === "sleep") {
-        mode = "rest";
-        restTime = 60;
-        octo.classList.remove("sleep");
-        say("으앗, 깼다!");
+// --- 제2장 : 죽음의 스위트룸 ---
+async function crimeScene() {
+  S.f.crime = true;
+  CUT = [N("doctor", 4, 4, "left"), N("haeun", 6, 5, "up"), N("captain", 8, 5, "left"), N("jia", 11, 6, "left")];
+  await T("haeun", "회... 회장님이... 아침에 깨우러 왔는데, 숨을 안 쉬세요...!");
+  await T("captain", "선장 강도현이오. 모두 진정하시오!");
+  await T("doctor", "제가 의사입니다. 살펴보죠.");
+  await narr("최민우가 침대에 누운 회장을 살폈다.");
+  await T("doctor", "...안타깝지만, 돌아가셨습니다. 심장마비로 보이는군요.");
+  await T("doctor", "사망 시각은 어젯밤 9시에서 9시 반 사이쯤입니다.");
+  await T("jia", "9시라면... 어젯밤 준호 씨가 회장님이랑 싸우던 시간이잖아요!");
+  await T("captain", "하필 폭풍이 와서, 항구까지 하루는 더 걸리오. 경찰도 그때까지 올 수가 없소.");
+  await T("doctor", "(머리맡의 갈색 약병으로 손을 뻗으며) 이 약은 의사인 제가 보관해 두죠. 위험할 수도 있으니까요.");
+  await T("jia", "잠깐만요! 추리소설에서 봤는데, 사건 현장의 물건은 함부로 건드리면 안 돼요!");
+  await T("captain", "맞소. 모두 아무것도 손대지 마시오.");
+  await T("doctor", "...그렇군요. 실례했습니다.");
+  await T("captain", "단비 학생이라고 했지? 추리 대회 우승자라고 들었소. 경찰이 오기 전까지 조사를 도와주겠소?");
+  await T("danbi", "...네. 해 볼게요!");
+  await T("jia", "저도 도울게요, 탐정님! 막히면 복도에 있는 저한테 물어보세요.");
+  await addClue("doctor");
+  await fadeTo(1);
+  CUT = null;
+  await fadeTo(0);
+  await narr("사람들이 방을 나갔다. 반짝이는 곳을 중심으로 방을 조사해 보자.");
+}
+
+function checkCh2() {
+  const need = ["teacup", "pillbottle", "emptybottle", "cufflink", "cardlog", "roomservice", "junho"];
+  return need.every(has) && S.f.t2_haeun && S.f.t2_doctor;
+}
+async function afterCh2Step() {
+  if (S.ch === 2 && !S.f.ch2done && checkCh2()) {
+    S.f.ch2done = true;
+    await narr("📢 [선내 방송] \"단비 학생, 함교로 와 주시오. 선장이오.\"");
+    if (S.map === "bridge") await chapter3Scene();   // 이미 함교에 있으면 바로 시작
+  }
+}
+
+async function chapter3Scene() {
+  await T("captain", "단비 학생, 와 주었군. 지금까지 들은 이야기를 정리해 보았소.");
+  await T("captain", "회장님은 밤 9시 반쯤 돌아가셨고, 그때 싸운 사람은 준호 씨. 현장엔 'J'가 새겨진 단추까지 있었지.");
+  await T("captain", "준호 씨를 범인으로 보고 방에 가둬야겠소.");
+  await T("danbi", "잠깐만요, 선장님! 이상한 점이 있어요.");
+  await T("danbi", "웨이터 민호 씨는 밤 10시에 회장님께 차를 갖다 드렸어요. 그때 회장님은 살아 계셨고요.");
+  await T("captain", "뭐라고? 그럼 최 박사가 말한 사망 시각이 틀렸단 말이오?");
+  await T("danbi", "네. 그리고 준호 씨는 9시 20분부터 계속 라운지에 있었다고 했어요.");
+  await T("captain", "흠... 하지만 그것만으로 준호 씨가 범인이 아니라고 할 수도 없소. 일단 준호 씨는 자기 방에 있게 하겠소.");
+  await T("captain", "단비 학생. 진짜 진실을 찾아 주시오.");
+  await chapterCard("제3장", "숨겨진 진실");
+  S.ch = 3;
+  await fadeTo(0);
+  save();
+}
+
+
+// =====================================================
+//  13. 등장인물과 대화하기
+// =====================================================
+async function talk(n) {
+  const ch = S.ch, f = S.f, id = n.id;
+  switch (id) {
+
+    case "jia":
+      if (ch === 1) {
+        await T("jia", "식당은 복도 아래쪽 왼쪽 문이에요! 오른쪽 끝 문은 함교(배를 운전하는 곳)예요.");
       } else {
-        say("헤헤 💕");
+        await T("jia", "탐정님, 지금 해야 할 일은요...");
+        for (const t of objectiveList()) await T("jia", "▶ " + t);
+        await T("jia", "모은 단서는 C 키 수첩에서 다시 읽을 수 있어요. 작은 모순도 놓치지 마세요!");
       }
+      break;
 
-      octo.classList.remove("jump");
-      void octo.offsetWidth;       // 점프를 처음부터 다시 하게 하는 요령
-      octo.classList.add("jump");
-      floatText("💖");
-    });
+    case "ceo":
+      await dinnerTalk("ceo", [
+        "자네가 추리 대회에서 우승했다는 학생인가? 허허, 재밌군.",
+        "이 옆자리 최 박사가 아주 친절하더군. 덕분에 오늘 밤은 푹 잘 수 있겠어.",
+        "...나는 젊을 때 잘못을 많이 했지. 내일은 그걸 바로잡을 생각이네."
+      ]);
+      break;
 
-    // ----- 8. 빈 곳을 클릭하면 : 그곳으로 걸어가기 -----
-    document.body.addEventListener("click", function (event) {
-      octo.classList.remove("sleep");
-      goalX = event.clientX - 60;
-      goalY = event.clientY - 50;
-      mode = "walk";
-      say("가는 중~!");
-    });
+    case "doctor":
+      if (ch === 1) {
+        await dinnerTalk("doctor", [
+          "최민우입니다. 서울에서 작은 병원을 하고 있어요.",
+          "회장님 옆자리라니... 이런 기회가 올 줄은 몰랐네요.",
+          "(최민우는 회장 쪽을 바라보며 와인잔을 천천히 돌렸다.)"
+        ]);
+      } else if (ch === 2) {
+        await T("doctor", "회장님 일은 안타깝게 됐네요. 지병이 있으셨나 봅니다.");
+        await T("doctor", "그런데 준호 씨 말이에요. 어젯밤 9시에 회장님과 크게 싸웠다면서요? 흥분하면 심장에 무리가 가죠.");
+        await T("doctor", "저요? 어젯밤엔 계속 제 방에서 책을 읽었습니다.");
+        f.t2_doctor = true;
+        await afterCh2Step();
+      } else {
+        await T("doctor", "아직도 조사 중인가요? 이런 일은 경찰에 맡기는 게 좋을 텐데요.");
+        await narr("(최민우는 말없이 바다만 바라보고 있다.)");
+      }
+      break;
 
-    // ----- 9. 매 순간 반복 : 문어 움직이기 -----
-    function update() {
-      let hop = 0;   // 위로 살짝 뜨는 높이
-
-      if (mode === "walk") {
-        // 가고 싶은 곳까지 남은 거리
-        const dx = goalX - x;
-        const dy = goalY - y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-
-        if (distance < SPEED) {
-          // 도착! 잠깐 쉬기
-          mode = "rest";
-          restTime = 100 + Math.random() * 200;
+    case "haeun":
+      if (ch === 1) {
+        await dinnerTalk("haeun", [
+          "윤하은입니다. 회장님 비서예요.",
+          "발표 원고는 회장님이 직접 쓰셨어요. 저는 오늘 밤에 인쇄한 원고만 갖다 드리면 돼요.",
+          "(하은은 어딘가 긴장한 얼굴이다.)"
+        ]);
+      } else if (ch === 2) {
+        await T("haeun", "...저는 어젯밤 제 방에 있었어요.");
+        await T("haeun", "회장님 방에는... 안 갔어요. 정말이에요.");
+        if (has("cardlog")) await T("danbi", "(카드키 기록에는 10시 40분에 하은 씨의 카드가 찍혀 있었는데...)");
+        f.t2_haeun = true;
+        await afterCh2Step();
+      } else if (!has("speech")) {
+        const c = await choose("하은에게 무엇을 할까?", ["카드키 기록을 보여준다", "그냥 이야기한다"]);
+        if (c === 0) {
+          await T("danbi", "하은 씨. 카드키 기록에 10시 40분, 하은 씨 카드가 찍혀 있어요.");
+          await T("haeun", "......");
+          await T("haeun", "...맞아요. 10시 40분에 회장님 방에 들어갔어요. 발표 원고를 갖다 드리려고요.");
+          await T("haeun", "방은 어두웠고, 회장님은 침대에 누워 계셨어요. 주무시는 줄 알고... 원고만 책상에 두고 나왔어요.");
+          await T("haeun", "그런데 아침에 돌아가신 걸 보고, 의심받을까 봐 너무 무서워서... 원고를 다시 가져와 버렸어요.");
+          await T("haeun", "거짓말해서 죄송해요. 이게 그 원고예요. 저도 아직 열어 보지 못했어요.");
+          await addClue("speech");
         } else {
-          // 목표 쪽으로 한 걸음
-          x += dx / distance * SPEED;
-          y += dy / distance * SPEED;
-          steps += SPEED;
-          hop = Math.abs(Math.sin(steps / 8)) * 8;   // 통통 튀기
+          await T("haeun", "...탐정님, 범인은 정말 준호 씨일까요?");
         }
+      } else {
+        await T("haeun", "그 원고... 회장님이 무슨 말씀을 하시려던 건지, 무서워서 아직 못 열어 봤어요.");
       }
-      else if (mode === "rest") {
-        restTime -= 1;
-        if (restTime <= 0) {
-          const dice = Math.random();   // 0 ~ 1 사이의 무작위 숫자
-          if (dice < 0.15) {
-            mode = "sleep";             // 15% : 잠자기
-            octo.classList.add("sleep");
-            say("졸려... 😪");
-          } else {
-            if (dice < 0.4) say(WORDS[Math.floor(Math.random() * WORDS.length)]);
-            pickNewGoal();              // 나머지 : 다른 곳으로 가기
+      break;
+
+    case "lena":
+      if (ch === 1 && !f.dinnerDone) {
+        await dinnerTalk("lena", [
+          "레나예요. 이 배 라운지 가수야. 오늘 밤 10시부터 11시까지 공연하니까 보러 와~",
+          "그런데 회장님 옆자리 의사 선생님 말이야. 아까부터 회장님만 뚫어지게 보더라. 팬인가?"
+        ]);
+      } else if (ch === 1) {
+        await T("lena", "공연 준비 중이야~ 10시에 다시 와!");
+      } else if (ch === 2) {
+        await T("lena", "회장님이 돌아가셨다니... 믿기지가 않아.");
+        await T("lena", "어젯밤엔 10시부터 11시까지 무대에서 노래했어. 준호 씨는 그동안 저 바에서 계속 술만 마셨고.");
+      } else if (!has("lena")) {
+        await T("danbi", "레나 씨, 어제 만찬 때 혹시 이상한 일은 없었나요?");
+        await T("lena", "이상한 일? 음... 아, 맞다!");
+        await T("lena", "회장님이 '수면제가 다 떨어졌다'고 하니까, 의사 선생님이 '마침 같은 약이 있다'면서 작은 갈색 약병을 건넸어.");
+        await T("lena", "난 바로 맞은편에 앉아 있어서 똑똑히 봤지.");
+        await addClue("lena");
+      } else {
+        await T("lena", "탐정님, 범인 꼭 잡아. 회장님... 그래도 마지막엔 좋은 사람 같았어.");
+      }
+      break;
+
+    case "junho":
+      if (ch === 1) {
+        await dinnerTalk("junho", [
+          "서준호. 회장 조카야. 뭐, 할 말 있어?",
+          "삼촌은 돈밖에 몰라. 하나뿐인 조카가 빚더미에 앉아도 모른 척이지."
+        ]);
+      } else if (ch === 2) {
+        await T("junho", "...뭐야, 나 의심하는 거야?");
+        await T("junho", "그래, 9시에 삼촌이랑 싸웠어. 빚 좀 갚아 달랬는데 거절하더라.");
+        await T("junho", "9시 20분에 나와서 여기서 새벽까지 술 마셨어. 레나 누나 공연도 봤다고!");
+        if (has("cufflink")) {
+          const c = await choose("준호에게 무엇을 할까?", ["커프스 단추를 보여준다", "그냥 넘어간다"]);
+          if (c === 0) {
+            await T("junho", "그거 내 거야! ...싸울 때 삼촌이 내 소매를 붙잡았거든. 그때 떨어졌나 봐.");
+            await T("junho", "하지만 맹세코 난 안 죽였어!");
           }
         }
+        await addClue("junho");
+        await afterCh2Step();
+      } else {
+        await T("junho", "선장님이 나보고 방에만 있으래. 완전 범인 취급이라고!");
+        await T("junho", "...삼촌이 이렇게 갈 줄 알았으면, 그렇게 싸우지 말걸.");
       }
-      else if (mode === "sleep") {
-        if (Math.random() < 0.01) floatText("💤");
-        if (Math.random() < 0.001) {    // 가끔 스스로 일어나요
-          octo.classList.remove("sleep");
-          say("잘 잤다! ☀️");
-          pickNewGoal();
+      break;
+
+    case "minho":
+      if (ch === 1) {
+        await T("minho", "웨이터 박민호입니다! 필요한 거 있으시면 말씀하세요.");
+        await T("minho", "회장님은 매일 밤 10시에 캐모마일 차를 드신대요. 오늘 밤에도 갖다 드려야 해요.");
+      } else if (ch === 2) {
+        await T("minho", "회장님이... 어젯밤에 제가 차를 갖다 드렸는데...");
+        await T("minho", "밤 10시 정각이었어요. 그때 회장님은 멀쩡하셨어요. '약 먹고 일찍 자야겠다'고 하셨거든요.");
+        await addClue("roomservice");
+        await afterCh2Step();
+      } else {
+        await T("minho", "범인... 꼭 잡아 주세요, 탐정님.");
+      }
+      break;
+
+    case "nurse":
+      if (ch === 1) {
+        await T("nurse", "이 배의 간호사 오수진이에요. 뱃멀미 나면 언제든 오세요~");
+      } else if (ch === 2) {
+        await T("nurse", "회장님 일은 정말 충격이에요...");
+        await T("nurse", "그러고 보니 어제 약품 보관함을 정리하다가 좀 이상한 걸 봤는데... 에이, 별일 아니겠죠.");
+      } else if (!has("poison")) {
+        const c = await choose("간호사에게 무엇을 할까?", ["갈색 약병을 보여준다", "그냥 이야기한다"]);
+        if (c === 0) {
+          await T("nurse", "현장에 있던 약병이요? 검사 키트로 알약 하나를 확인해 볼게요.");
+          await narr("……");
+          await T("nurse", "이, 이건...! 독성 약품 반응이 나왔어요!");
+          await addClue("poison");
+          await T("nurse", "잠깐만요... 그러고 보니!");
+          await T("nurse", "어제 저녁 6시 반쯤 최민우 박사님이 두통약을 받으러 오셨어요. 제가 5분쯤 자리를 비웠었고요.");
+          await T("nurse", "그리고 8시에 보관함을 정리하는데, 독성 약품 한 병이 텅 비어 있었어요. 제가 실수로 쏟은 줄 알았는데...");
+          await addClue("infirmary");
+        } else {
+          await T("nurse", "무서운 일이에요. 탐정님도 조심하세요.");
+        }
+      } else {
+        await T("nurse", "그 약품은 원래 배를 소독할 때 쓰는 거예요. 아주 위험한 거라 잠가 두는데...");
+      }
+      break;
+
+    case "captain":
+      if (ch === 1) {
+        await T("captain", "오로라호 선장 강도현이오. 즐거운 여행 되시오.");
+        await T("captain", "다만 이번 항해는 날씨가 걱정이군. 내일부터 폭풍이 온다던데.");
+      } else if (ch === 2) {
+        if (!has("cardlog")) {
+          await T("captain", "스위트룸 문은 카드키로만 열 수 있소. 출입 기록을 뽑아 왔으니 참고하시오.");
+          await addClue("cardlog");
+          await afterCh2Step();
+        } else {
+          await T("captain", "폭풍 때문에 항구까지 하루는 더 걸리오. 부탁하오, 단비 학생.");
+        }
+      } else if (["poison", "infirmary", "lena", "speech", "article"].every(has)) {
+        const c = await choose("이제 진실을 밝힐 준비가 됐을까?", ["모두를 라운지로 모아 주세요", "조금만 더 조사할게요"]);
+        if (c === 0) await showdown();
+        else await T("captain", "알겠소. 준비되면 말해 주시오.");
+      } else if (has("poison") && has("lena") && has("infirmary") && !f.masterKey) {
+        await T("danbi", "선장님, 최민우 박사의 방을 조사하게 해 주세요.");
+        await T("captain", "최 박사를? ...독이 든 약, 의무실 기록, 레나 씨의 증언까지라.");
+        await T("captain", "...알겠소. 여기 마스터키요. 이걸로 최 박사의 방을 열 수 있소.");
+        f.masterKey = true;
+        await narr("🔑 마스터키를 받았다!");
+      } else {
+        await T("captain", "진실은 찾았소? 필요한 게 있으면 말하시오.");
+      }
+      break;
+  }
+}
+
+
+// =====================================================
+//  14. 조사할 수 있는 곳 (물건)
+// =====================================================
+// clue 가 있으면 아직 못 찾았을 때 반짝여요
+function spots() {
+  const ch = S.ch, f = S.f;
+  const msg = t => async () => { await narr(t); };
+  switch (S.map) {
+    case "deck": return [
+      { x: 6, y: 4, run: msg("구명튜브다. '오로라호'라고 적혀 있다.") },
+      { x: 13, y: 4, run: msg("구명튜브다. 쓸 일이 없으면 좋겠는데...") },
+      { x: 6, y: 8, run: msg(ch === 1 ? "바닷바람이 시원하다. 노을이 예쁘다." : "비바람에 탁자가 흠뻑 젖어 있다.") },
+      { x: 15, y: 8, run: msg("야자나무 화분이다.") }
+    ];
+    case "hall": return [
+      { x: 1, y: 3, run: msg("잘 가꾼 화분이다.") }, { x: 18, y: 3, run: msg("잘 가꾼 화분이다.") },
+      { x: 1, y: 9, run: msg("화분 옆에 '선내에서 뛰지 마세요'라는 안내문이 붙어 있다.") },
+      { x: 18, y: 9, run: msg("잘 가꾼 화분이다.") }
+    ];
+    case "cabinD": return [
+      { x: 5, y: 3, run: bedEvent }, { x: 5, y: 4, run: bedEvent },
+      { x: 14, y: 3, run: msg("내가 가져온 추리소설들이다. '명탐정은 작은 모순을 절대 놓치지 않는다.'") },
+      { x: 11, y: 6, run: msg("동아리 친구들에게 보낼 엽서가 놓여 있다.") },
+      { x: 5, y: 7, run: msg("작은 화분이다.") }
+    ];
+    case "cabinJ": return [
+      { x: 5, y: 3, run: msg("이불이 엉망으로 흐트러져 있다.") }, { x: 5, y: 4, run: msg("이불이 엉망으로 흐트러져 있다.") },
+      { x: 11, y: 6, run: msg("빈 술병과 편지가 있다. '이번 달까지 빚을 갚지 못하면...' 빚 독촉 편지다.") },
+      { x: 14, y: 3, run: msg("카지노 잡지가 꽂혀 있다.") }
+    ];
+    case "cabinM": return [
+      { x: 5, y: 3, run: msg("침대가 깔끔하다. 어젯밤 한 번도 안 잔 것처럼...") },
+      { x: 5, y: 4, run: msg("침대가 깔끔하다. 어젯밤 한 번도 안 잔 것처럼...") },
+      { x: 14, y: 3, run: msg("의학 책이 빼곡하다. '약물 부작용'이라는 책에 밑줄이 잔뜩 그어져 있다.") },
+      { x: 11, y: 6, run: msg("액자 속에서 교복을 입은 여학생이 환하게 웃고 있다.") },
+      { x: 14, y: 6, clue: "article", run: async () => {
+          if (has("article")) return narr("가방 속은 이미 다 살펴보았다.");
+          await narr("가방 깊숙한 곳에서 낡은 신문 기사와 사진 한 장이 나왔다.");
+          await narr("'서만석 제약 진통제 부작용… 고교생 최수연(17) 숨져' — 10년 전 기사다.");
+          await narr("사진 뒷면에는 이렇게 적혀 있다. '수연이와 오빠 민우'");
+          await T("danbi", "최수연... 그리고 오빠 '민우'... 최민우 박사의 동생이었어!");
+          await addClue("article");
+        } }
+    ];
+    case "suite": return [
+      { x: 3, y: 3, run: bodyEvent }, { x: 3, y: 4, run: bodyEvent },
+      { x: 4, y: 3, clue: "pillbottle", run: async () => {
+          if (has("pillbottle")) return narr("작은 갈색 약병이다. 알약이 4알 남아 있다.");
+          await narr("머리맡 협탁에 작은 갈색 약병이 놓여 있다. 라벨이 없다.");
+          await narr("뚜껑을 열어 보니 하얀 알약이 4알 들어 있다.");
+          await T("danbi", "최 박사님이 아까 가져가려던 약병이네...");
+          await addClue("pillbottle"); await afterCh2Step();
+        } },
+      { x: 8, y: 6, clue: "teacup", run: async () => {
+          if (has("teacup")) return narr("반쯤 남은 캐모마일 차다.");
+          await narr("탁자 위에 찻잔이 있다. 캐모마일 차가 반쯤 남아 있다.");
+          await narr("냄새를 맡아 봤지만, 이상한 냄새는 나지 않는다.");
+          await addClue("teacup"); await afterCh2Step();
+        } },
+      { x: 11, y: 5, clue: "cufflink", run: async () => {
+          if (has("cufflink")) return narr("푹신한 카펫이다.");
+          await narr("카펫 위에서 무언가 반짝인다. 금색 커프스 단추다!");
+          await narr("단추에 'J'라는 글자가 새겨져 있다.");
+          await addClue("cufflink"); await afterCh2Step();
+        } },
+      { x: 16, y: 6, clue: "emptybottle", run: async () => {
+          if (has("emptybottle")) return narr("회장의 여행 가방이다.");
+          await narr("회장의 여행 가방이다. 안에서 약국 약병이 나왔다. 라벨에 '수면제'라고 적혀 있다.");
+          await narr("...그런데 약병이 텅 비어 있다.");
+          await T("danbi", "회장님 본인 수면제는 다 떨어졌던 거구나. 그럼 머리맡의 갈색 약병은...?");
+          await addClue("emptybottle"); await afterCh2Step();
+        } },
+      { x: 16, y: 3, run: deskEvent }, { x: 16, y: 4, run: deskEvent },
+      { x: 3, y: 7, run: msg("고급스러운 화분이다.") }, { x: 16, y: 7, run: msg("고급스러운 화분이다.") }
+    ];
+    case "dining": return [
+      ...[[4, 4], [5, 4], [12, 4], [13, 4], [4, 6], [5, 6], [12, 6], [13, 6]].map(([x, y]) => ({
+        x, y, run: msg(ch === 1 && f.dinner && !f.dinnerDone ? "맛있는 냄새가 난다. 스테이크다!" : "식탁이 깨끗이 정리되어 있다.") })),
+      { x: 1, y: 8, run: msg("화분이다.") }, { x: 18, y: 8, run: msg("화분이다.") }
+    ];
+    case "lounge": return [
+      { x: 3, y: 4, run: msg("반짝이는 그랜드 피아노다.") },
+      ...[13, 14, 16, 17].map(x => ({ x, y: 3, run: msg("바 카운터다. 술병이 가득 진열되어 있다.") })),
+      { x: 5, y: 6, run: msg("작은 탁자다.") }, { x: 13, y: 6, run: msg("작은 탁자다. 빈 술잔이 잔뜩 쌓여 있다.") }
+    ];
+    case "infirmary": return [
+      ...[6, 7, 8].map(x => ({ x, y: 3, run: msg(has("infirmary") ? "이 보관함에서 독성 약품이 사라졌다..." : "약품 보관함이다. 유리문 안에 약병이 가득하다.") })),
+      { x: 5, y: 3, run: msg("환자용 침대다.") }, { x: 5, y: 4, run: msg("환자용 침대다.") },
+      { x: 14, y: 3, run: msg("환자용 침대다.") }, { x: 14, y: 4, run: msg("의학 책이 꽂혀 있다.") }
+    ];
+    case "bridge": return [
+      ...[3, 4, 5, 6, 13, 14, 15, 16].map(x => ({ x, y: 3, run: msg(ch === 1 ? "배의 위치와 날씨가 표시된 화면이다." : "'폭풍 경보' 빨간 글씨가 깜빡이고 있다.") })),
+      { x: 9, y: 4, run: msg("배의 키(운전대)다. 함부로 만지면 안 된다!") }
+    ];
+  }
+  return [];
+}
+
+async function bedEvent() {
+  if (S.ch === 1 && S.f.argue) {
+    const c = await choose("오늘은 이만 잘까?", ["잔다", "아직 안 잔다"]);
+    if (c === 0) await sleepScene();
+  } else if (S.ch === 1) {
+    await narr("푹신한 침대다. 아직 잘 시간은 아니다.");
+  } else {
+    await narr("푹신한 침대다. 지금은 잠잘 때가 아니다!");
+  }
+}
+async function bodyEvent() {
+  await narr("회장이 편안히 잠든 듯한 얼굴로 누워 있다. 다친 곳은 하나도 없다.");
+  await T("danbi", "싸운 흔적이 없어... 자다가 그대로 돌아가신 것 같아.");
+}
+async function deskEvent() {
+  if (has("speech")) return narr("하은 씨가 원고 봉투를 두었던 책상이다.");
+  await narr("책상 위에 서류 봉투가 놓여 있던 것 같은 네모난 자국이 있다.");
+  await narr("...그런데 봉투는 보이지 않는다.");
+}
+
+
+// =====================================================
+//  15. 지금 해야 할 일 (화면 왼쪽 위에 표시)
+// =====================================================
+function objectiveList() {
+  const ch = S.ch, f = S.f;
+  if (ch === 1) {
+    if (!f.intro) return [];
+    if (!f.dinner) return ["식당(복도 아래쪽 왼쪽 문)의 환영 만찬에 가자"];
+    if (!f.dinnerDone) return ["만찬에 온 사람들과 이야기하기 (" + dinnerCount() + "/5)"];
+    if (!f.argue) return ["식당을 나가 복도로 가자"];
+    return ["내 방(복도 위 첫 번째 문) 침대에서 잠을 자자"];
+  }
+  if (ch === 2) {
+    if (!f.crime) return ["비명이 들린 스위트룸(복도 위 네 번째 문)으로 가자"];
+    if (f.ch2done) return ["함교(복도 오른쪽 끝)로 가서 선장을 만나자"];
+    const room = ["pillbottle", "teacup", "cufflink", "emptybottle"].filter(has).length;
+    if (room < 4) return ["스위트룸을 조사하자 (" + room + "/4)"];
+    const L = [];
+    if (!has("cardlog")) L.push("함교의 선장에게 이야기 듣기");
+    if (!has("roomservice")) L.push("식당의 웨이터 민호에게 이야기 듣기");
+    if (!has("junho")) L.push("라운지의 준호에게 이야기 듣기");
+    if (!f.t2_haeun) L.push("식당의 하은에게 이야기 듣기");
+    if (!f.t2_doctor) L.push("갑판의 최 박사에게 이야기 듣기");
+    return L;
+  }
+  if (ch === 3) {
+    const L = [];
+    if (!has("poison")) L.push("의무실 간호사에게 갈색 약병 보여주기");
+    if (!has("lena")) L.push("라운지의 레나에게 만찬 이야기 듣기");
+    if (!has("speech")) L.push("식당의 하은에게 카드키 기록 보여주기");
+    if (has("poison") && has("lena") && !f.masterKey) L.push("함교의 선장에게 최 박사 방 열쇠 부탁하기");
+    if (f.masterKey && !has("article")) L.push("최 박사의 방(복도 위 세 번째 문) 조사하기");
+    if (!L.length) L.push("함교의 선장에게 모두를 모아 달라고 하자!");
+    return L;
+  }
+  return [];
+}
+
+
+// =====================================================
+//  16. 최종장 : 진실의 시간 (증거 제시 대결)
+// =====================================================
+const STAGES = [
+  { lines: [["doctor", "회장님은 심장마비로 돌아가셨어요. 의사인 제가 직접 확인했습니다."],
+            ["doctor", "설령 누가 해쳤다 해도, 사망 시각은 밤 9시에서 9시 반 사이."],
+            ["doctor", "그 시간에 회장님과 싸운 사람은... 준호 씨뿐이죠."]],
+    answer: "roomservice",
+    hint: "사망 시각이 9시 반이라고요? 그 뒤에도 회장님이 살아 계셨다는 증거가 있지 않았나요?",
+    right: [["danbi", "그건 틀렸어요!"],
+            ["danbi", "밤 10시, 웨이터 민호 씨가 차를 갖다 드렸을 때 회장님은 살아 계셨어요!"],
+            ["minho", "마, 맞아요! '약 먹고 일찍 자야겠다'고 하셨어요!"],
+            ["doctor", "...그, 그런가요. 시신만 보고 정확한 시간을 맞히긴 어려우니까요."]] },
+  { lines: [["doctor", "좋아요. 그럼 10시 이후에 방에 들어간 사람이 범인이겠군요."],
+            ["doctor", "카드키 기록을 보세요. 10시 40분, 윤하은 씨의 카드가 찍혀 있잖아요!"],
+            ["haeun", "아, 아니에요! 저는 원고만 두고..."],
+            ["doctor", "그 방에 들어간 사람은 하은 씨뿐입니다. 범인은 하은 씨예요!"]],
+    answer: "poison",
+    hint: "범인이 꼭 방에 들어가야만 했을까요? 회장님이 직접 드신 게 있었잖아요!",
+    right: [["danbi", "범인은 방에 들어갈 필요가 없었어요."],
+            ["danbi", "회장님 머리맡의 갈색 약병. 그 알약에서 독이 나왔어요!"],
+            ["danbi", "회장님은 10시쯤 차와 함께 그 약을 드시고, 잠든 채로 돌아가신 거예요."],
+            ["haeun", "그럼... 제가 10시 40분에 봤을 때, 회장님은 이미..."]] },
+  { lines: [["doctor", "독이 든 수면제라고요? 그건 회장님이 원래 갖고 다니던 약이겠죠."],
+            ["doctor", "자기 약에 독이 섞여 있었다면, 회장님 곁에 있던 사람이 의심스럽지 않나요?"]],
+    answer: "emptybottle",
+    hint: "회장님 본인의 약은 어떻게 되어 있었죠? 가방 속을 떠올려 보세요!",
+    right: [["danbi", "회장님 가방 속에 회장님 본인의 약병이 있었어요. 텅 빈 채로요."],
+            ["danbi", "회장님의 수면제는 이미 다 떨어졌던 거예요. 머리맡의 갈색 약병은... 누군가 새로 준 약이에요!"],
+            ["doctor", "......"]] },
+  { lines: [["doctor", "누군가 줬다고요? 그게 누군지 어떻게 압니까?"],
+            ["doctor", "그 약병엔 이름 하나 없어요. 증거도 없이 사람을 의심하면 안 되죠."]],
+    answer: "lena",
+    hint: "갈색 약병을 건네주는 모습을 본 사람이 있었죠?",
+    right: [["danbi", "본 사람이 있어요."],
+            ["lena", "응! 만찬 때 의사 선생님이 '같은 약이 있다'면서 회장님께 갈색 약병을 건넸어. 맞은편에서 똑똑히 봤어!"],
+            ["doctor", "...수, 수면제를 드린 건 맞아요. 친절을 베푼 게 죄입니까?"]] },
+  { lines: [["doctor", "저는 수면제를 드렸을 뿐이에요."],
+            ["doctor", "독이라니요? 저는 그런 위험한 약품을 갖고 있지도 않습니다!"]],
+    answer: "infirmary",
+    hint: "배 안에서 약품을 보관하는 곳이라면... 그곳의 기록이 있었죠?",
+    right: [["danbi", "의무실 기록을 보면, 어제 저녁 6시 반에 박사님이 의무실에 오셨어요."],
+            ["nurse", "제가 5분 자리를 비운 사이... 보관함의 독성 약품 한 병이 비어 있었어요!"],
+            ["doctor", "크윽...!"]] },
+  { lines: [["doctor", "...하지만 이상하지 않나요?"],
+            ["doctor", "저는 이 배에서 회장님을 처음 만났어요. 처음 본 사람을 제가 왜 죽입니까? 이유가 없잖아요!"]],
+    answer: "article",
+    hint: "박사님 방에서 찾은 것... 두 사람이 처음 만난 사이가 아니라는 증거!",
+    right: [["danbi", "이유는 있어요. 박사님 방 가방 속에서 찾은 10년 전 신문 기사예요."],
+            ["danbi", "'서만석 제약 진통제 부작용… 고교생 최수연 숨져'. 사진 뒷면엔 '수연이와 오빠 민우'라고 적혀 있었어요."],
+            ["danbi", "최수연 씨는... 박사님의 동생이죠?"]] }
+];
+const SCOFF = ["후후, 그게 지금 무슨 상관이죠?", "그 증거로는 아무것도 증명할 수 없어요.", "탐정 놀이는 그만하시죠."];
+
+async function showdown() {
+  await T("captain", "좋소. 모두 라운지로 모으겠소.");
+  await chapterCard("최종장", "진실의 시간");
+  S.map = "lounge"; P.x = 9; P.y = 7; P.dir = "up";
+  CUT = [N("doctor", 9, 5, "down"), N("captain", 7, 6, "right"), N("haeun", 11, 6, "left"),
+         N("junho", 12, 5, "left"), N("lena", 6, 5, "right"), N("minho", 15, 6, "left"),
+         N("nurse", 7, 4, "down"), N("jia", 10, 7, "up")];
+  S.hearts = 5; S.inShowdown = true;
+  await fadeTo(0);
+  await narr("폭풍우가 몰아치는 밤. 라운지에 모든 사람이 모였다.");
+  await T("danbi", "회장님을 죽인 범인은... 이 안에 있어요.");
+  await T("doctor", "범인이라니요? 회장님은 심장마비로 돌아가셨다니까요.");
+  await narr("❤ 하트가 5개 있어요. 틀린 증거를 내밀면 하트가 1개 줄어요.");
+
+  let scoff = 0;
+  for (const st of STAGES) {
+    while (true) {
+      for (const [who, text] of st.lines) await T(who, text);
+      const c = await choose("어떻게 할까?", ["증거를 제시한다! (수첩 열기)", "다시 듣는다"]);
+      if (c === 1) continue;
+      const id = await openNote(true);
+      if (!id) continue;
+      if (id === st.answer) {
+        await narr("「" + CLUES[id].name + "」를 내밀었다!");
+        for (const [who, text] of st.right) await T(who, text);
+        break;
+      }
+      await narr("「" + CLUES[id].name + "」를 내밀었다...");
+      await T("doctor", SCOFF[scoff++ % SCOFF.length]);
+      S.hearts--;
+      if (S.hearts <= 0) {
+        await narr("💔 하트를 모두 잃었다... 사람들이 단비를 믿지 않기 시작했다.");
+        await choose("포기할 수는 없어!", ["다시 도전한다"]);
+        S.hearts = 5;
+        await narr("❤ 하트가 다시 5개가 되었다. 마음을 다잡자!");
+      }
+      await T("jia", "(작게) 탐정님, 힌트예요! " + st.hint);
+    }
+  }
+  await endingScene();
+}
+
+async function endingScene() {
+  await T("doctor", "......");
+  await T("doctor", "...수연이는 내 동생이었어. 열일곱 살이었지.");
+  await T("doctor", "저 사람 회사의 진통제를 먹고 죽었어. 회사는 돈으로 모든 걸 덮어 버렸고.");
+  await T("doctor", "10년을 기다렸어. 이 배에 그가 탄다는 걸 알고... 의무실에서 약품을 훔쳐 수면제에 넣었지.");
+  await T("doctor", "그 사람은 벌을 받아야 했어. 끝까지 사과 한마디 없던 그 사람은!");
+  await T("haeun", "...최 박사님. 이걸 들어 보세요.");
+  await T("haeun", "회장님이 오늘 아침 9시에 발표하시려던 원고예요.");
+  await narr("하은이 떨리는 손으로 봉투를 열고, 원고를 읽기 시작했다.");
+  await say("발표 원고", "'10년 전, 우리 회사의 약 때문에 세상을 떠난 최수연 학생과 그 가족에게 진심으로 사과드립니다.'");
+  await say("발표 원고", "'저는 그 진실을 돈으로 덮었습니다. 지난 10년 동안 단 하루도 잊은 적이 없습니다.'");
+  await say("발표 원고", "'제 재산의 절반으로, 약 때문에 피해를 입은 사람들을 돕는 재단을 만들겠습니다.'");
+  await T("doctor", "...뭐...라고?");
+  await T("doctor", "사과... 하려고 했다고...? 오늘 아침에...?");
+  await T("doctor", "그럼 나는... 나는 대체 무슨 짓을...");
+  await narr("최민우는 그 자리에 털썩 주저앉았다. 라운지에는 빗소리만 가득했다.");
+  await T("captain", "최민우 씨. 항구에 도착할 때까지 방에 있어 주시오. 경찰에 넘기겠소.");
+
+  // 에필로그 : 새벽의 갑판
+  await fadeTo(1);
+  S.inShowdown = false;
+  S.map = "deck"; P.x = 8; P.y = 6; P.dir = "right";
+  S.f.dawn = true;
+  CUT = [N("jia", 10, 6, "left")];
+  await fadeTo(0);
+  await narr("다음 날 새벽. 폭풍이 그치고, 수평선 너머로 해가 떠오르고 있었다.");
+  await T("jia", "탐정님, 폭풍이 그쳤어요. 오늘 오후면 항구에 도착한대요.");
+  await T("danbi", "...진실이 너무 늦게 도착했네요. 회장님의 사과도, 박사님의 복수도.");
+  await T("jia", "그래도 탐정님 덕분에 준호 씨도, 하은 씨도 누명을 벗었어요.");
+  await T("jia", "다음에 꼭 다시 오세요. 그땐 사건 없이, 진짜 여행으로요!");
+  await T("danbi", "네. 꼭 다시 올게요.");
+  await chapterCard("— 크루즈 살인사건 —", "끝. 플레이해 주셔서 고마워요!");
+  CUT = null;
+  clearSave();
+  scene = "end";
+  fadeAlpha = 0; fadeTarget = 0;
+}
+
+
+// =====================================================
+//  17. 매 순간 움직이기 (업데이트)
+// =====================================================
+function update() {
+  frame++;
+
+  // 화면 어두워지기/밝아지기
+  if (fadeAlpha !== fadeTarget) {
+    fadeAlpha += Math.sign(fadeTarget - fadeAlpha) * 0.06;
+    if (Math.abs(fadeAlpha - fadeTarget) < 0.06) {
+      fadeAlpha = fadeTarget;
+      if (fadeDone) { const d = fadeDone; fadeDone = null; d(); }
+    }
+  }
+
+  // NPC 걷기 (컷신)
+  for (const n of (CUT || [])) {
+    if (!n.walk) continue;
+    n.walk.prog += 0.125;
+    if (n.walk.prog >= 1) {
+      const [dx, dy] = DIRS[n.walk.dir];
+      n.x += dx; n.y += dy; n.walk.prog = 0; n.walk.steps--;
+      if (n.walk.steps <= 0) { const r = n.walk.resolve; n.walk = null; r(); }
+    }
+  }
+
+  if (scene === "title") return updateTitle();
+  if (scene === "end") { if (hit("ok")) { scene = "title"; titleIdx = 0; } return; }
+
+  // 대화창
+  if (MSG) {
+    MSG.shown = Math.min(MSG.text.length, MSG.shown + 1.5);
+    if (hit("ok")) {
+      if (MSG.shown < MSG.text.length) MSG.shown = MSG.text.length;
+      else { const r = MSG.resolve; MSG = null; r(); }
+    }
+    return;
+  }
+  // 선택지
+  if (CHOICE) {
+    if (hit("up")) CHOICE.idx = (CHOICE.idx + CHOICE.options.length - 1) % CHOICE.options.length;
+    if (hit("down")) CHOICE.idx = (CHOICE.idx + 1) % CHOICE.options.length;
+    if (hit("ok")) { const r = CHOICE.resolve, i = CHOICE.idx; CHOICE = null; r(i); }
+    return;
+  }
+  // 단서 수첩
+  if (NOTE) {
+    const n = S.clues.length;
+    if (n && hit("up")) NOTE.idx = (NOTE.idx + n - 1) % n;
+    if (n && hit("down")) NOTE.idx = (NOTE.idx + 1) % n;
+    if (hit("cancel") || (!NOTE.present && hit("note"))) { const r = NOTE.resolve; NOTE = null; r(null); return; }
+    if (hit("ok")) {
+      const r = NOTE.resolve, present = NOTE.present, id = S.clues[NOTE.idx];
+      if (present && id) { NOTE = null; r(id); }
+      else if (!present) { NOTE = null; r(null); }
+    }
+    return;
+  }
+
+  if (busy || fadeAlpha > 0) return;
+
+  // 플레이어 걷기
+  if (P.moving) {
+    P.prog += 0.125;                       // 8번에 한 칸
+    if (P.prog >= 1) {
+      P.moving = false; P.prog = 0;
+      if (tileAt(P.x, P.y) === "D") {
+        const d = MAPOF().doors[P.x + "," + P.y];
+        if (d) runEvent(() => changeMap(d.to, d.x, d.y, d.dir));
+        return;
+      }
+    }
+  }
+  if (!P.moving) {
+    if (hit("note")) { runEvent(() => openNote(false)); return; }
+    if (hit("ok")) { interact(); return; }
+    for (const d of ["up", "down", "left", "right"]) {
+      if (!held[d]) continue;
+      P.dir = d;
+      const [dx, dy] = DIRS[d];
+      const tx = P.x + dx, ty = P.y + dy;
+      const t = tileAt(tx, ty);
+      if (t === "D") {
+        const door = MAPOF().doors[tx + "," + ty];
+        if (door && door.locked && door.locked()) {
+          runEvent(() => narr(door.lockMsg));
+          break;
         }
       }
-
-      // 문어를 화면에 그리기
-      octo.style.left = x + "px";
-      octo.style.top = (y - hop) + "px";
-
-      requestAnimationFrame(update);   // 다음 화면에서 또 반복
+      if (!SOLID.includes(t) && !npcAt(tx, ty)) {
+        P.fx = P.x; P.fy = P.y; P.x = tx; P.y = ty;
+        P.moving = true; P.prog = 0; P.foot = !P.foot;
+      }
+      break;
     }
+  }
+}
 
-    // ----- 10. 시작! -----
-    say("안녕! 나는 픽셀 문어야!");
-    update();
-  </script>
+// 스페이스바 : 앞에 있는 사람에게 말 걸기 / 물건 조사
+function interact() {
+  const [dx, dy] = DIRS[P.dir];
+  let tx = P.x + dx, ty = P.y + dy;
+  let n = npcAt(tx, ty);
+  if (!n && tileAt(tx, ty) === "K") n = npcAt(tx + dx, ty + dy);   // 카운터 너머 사람
+  if (n) {
+    n.dir = { up: "down", down: "up", left: "right", right: "left" }[P.dir];
+    runEvent(() => talk(n));
+    return;
+  }
+  const s = spots().find(s => s.x === tx && s.y === ty);
+  if (s) runEvent(s.run);
+}
+
+function updateTitle() {
+  const opts = titleOptions();
+  if (hit("up") || hit("down")) titleIdx = (titleIdx + 1) % opts.length;
+  if (hit("ok")) {
+    const o = opts[titleIdx];
+    scene = "game";
+    if (o === "처음부터") {
+      clearSave();
+      S = newState();
+      P.x = 8; P.y = 6; P.dir = "right";
+      runEvent(async () => {
+        await chapterCard("제1장", "출항");
+        await fadeTo(0);
+        await onEnter("deck");
+      });
+    } else {
+      S = loadSave();
+      P.x = S.x; P.y = S.y; P.dir = S.dir;
+      S.inShowdown = false;
+      fadeAlpha = 1;
+      runEvent(() => fadeTo(0));
+    }
+  }
+}
+function titleOptions() { return loadSave() ? ["이어하기", "처음부터"] : ["처음부터"]; }
+
+
+// =====================================================
+//  18. 그리기
+// =====================================================
+function R(c, x, y, w, h) { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); }
+
+function drawFloor(ch, px, py, x, y) {
+  switch (ch) {
+    case ".": R("#a8703f", px, py, 32, 32); R("#8e5c32", px, py + 15, 32, 2);
+              R("#8e5c32", px + (y % 2 ? 6 : 22), py, 2, 15); R("#8e5c32", px + (y % 2 ? 22 : 10), py + 17, 2, 15); break;
+    case ",": R(S && S.map === "suite" ? "#3e4f7a" : "#7e2433", px, py, 32, 32);
+              R(S && S.map === "suite" ? "#4c5f90" : "#9b3546", px + 6, py + 6, 4, 4); R(S && S.map === "suite" ? "#4c5f90" : "#9b3546", px + 22, py + 22, 4, 4); break;
+    case "=": R("#c49a5e", px, py, 32, 32); R("#a77f45", px, py + 10, 32, 2); R("#a77f45", px, py + 21, 32, 2); break;
+    case "w": R("#e9eef3", px, py, 32, 32); R("#cfd8e0", px + 30, py, 2, 32); R("#cfd8e0", px, py + 30, 32, 2); break;
+    case "m": R("#8d97a3", px, py, 32, 32); R("#6f7883", px + 2, py + 2, 3, 3); R("#6f7883", px + 27, py + 27, 3, 3); break;
+    case "S": R("#4a2f66", px, py, 32, 32); R("#5c3c7d", px, py, 32, 3);
+              if (tileAt(x, y + 1) !== "S" && tileAt(x, y + 1) !== "p") for (let i = 4; i < 32; i += 9) R(frame % 40 < 20 ? "#ffe46b" : "#ffb347", px + i, py + 27, 3, 3); break;
+    default: R("#000", px, py, 32, 32);
+  }
+}
+
+function drawTile(ch, x, y) {
+  const px = x * TILE, py = y * TILE, m = MAPOF();
+  const floorish = c => !"#W ~".includes(c);
+  switch (ch) {
+    case " ": R("#0b0f1a", px, py, 32, 32); return;
+    case "#":
+      if (y + 1 < ROWS && floorish(tileAt(x, y + 1)) && tileAt(x, y + 1) !== "L") {
+        R("#e6d6b8", px, py, 32, 32); R("#c9b48e", px, py, 32, 3); R("#7a5236", px, py + 22, 32, 10); R("#5e3e28", px, py + 22, 32, 2);
+      } else { R("#3d2f2a", px, py, 32, 32); R("#4f3d36", px + 2, py + 2, 28, 28); }
+      return;
+    case "W":
+      R("#e6d6b8", px, py, 32, 32); R("#7a5236", px, py + 22, 32, 10);
+      ctx.fillStyle = "#c0a060"; ctx.beginPath(); ctx.arc(px + 16, py + 11, 9, 0, 7); ctx.fill();
+      ctx.fillStyle = S.f.dawn ? "#ffc9a8" : (S.ch === 1 ? "#ffb98a" : "#3c4f78"); ctx.beginPath(); ctx.arc(px + 16, py + 11, 6, 0, 7); ctx.fill();
+      if (S.map === "bridge") { R("#e6d6b8", px, py, 32, 32); R(S.ch === 1 ? "#f2a66b" : "#34466b", px + 1, py + 3, 30, 22); R("#7a5236", px, py + 25, 32, 7); }
+      return;
+    case "~": {
+      R(S.ch === 1 ? "#2a6fb0" : (S.f.dawn ? "#3b7fb8" : "#1d3c66"), px, py, 32, 32);
+      const o = (frame / 4 + x * 7 + y * 13) % 32;
+      R("rgba(255,255,255,0.25)", px + o % 24, py + 8, 8, 2); R("rgba(255,255,255,0.2)", px + (o + 14) % 24, py + 22, 6, 2);
+      return;
+    }
+    case "D":
+      drawFloor(m.floor === "=" ? "=" : m.floor, px, py, x, y);
+      R("#5c3a22", px + 3, py, 26, 32); R("#7d5230", px + 6, py + 3, 20, 29); R("#e2b84a", px + 21, py + 16, 3, 3);
+      return;
+  }
+  drawFloor(SOLID.includes(ch) || ch === "h" ? m.floor : ch, px, py, x, y);
+  switch (ch) {
+    case "L":
+      if (tileAt(x - 1, y) === "L" || tileAt(x + 1, y) === "L") {
+        R("#f0f0f0", px, py + 8, 32, 3); R("#f0f0f0", px, py + 18, 32, 3); R("#d8d8d8", px + 14, py + 6, 3, 18);
+      } else { R("#f0f0f0", px + 10, py, 3, 32); R("#f0f0f0", px + 20, py, 3, 32); }
+      break;
+    case "B":
+      if (tileAt(x, y - 1) !== "B") {
+        R("#6b4a2f", px + 2, py + 2, 28, 30); R("#ffffff", px + 6, py + 5, 20, 10); R("#c9d6ee", px + 4, py + 18, 24, 14);
+        if (S.map === "suite" && S.ch >= 2) {   // 회장의 시신
+          ctx.fillStyle = "#e9c3a0"; ctx.beginPath(); ctx.arc(px + 16, py + 11, 6, 0, 7); ctx.fill();
+          R("#d0d0d0", px + 10, py + 4, 12, 4); R("#5a4a6a", px + 4, py + 18, 24, 14);
+        }
+      } else {
+        R(S.map === "suite" && S.ch >= 2 ? "#5a4a6a" : "#c9d6ee", px + 4, py, 24, 28); R("#6b4a2f", px + 2, py + 26, 28, 6);
+      }
+      break;
+    case "T": R("#6b4a2f", px + 5, py + 24, 3, 6); R("#6b4a2f", px + 24, py + 24, 3, 6);
+              R("#f4f1e8", px + 2, py + 4, 28, 20); R("#cbbfa8", px + 2, py + 20, 28, 4);
+              if (S.map === "suite") { R("#ffffff", px + 12, py + 9, 8, 7); R("#c89b4f", px + 13, py + 10, 6, 3); } break;
+    case "h": R("#5c3720", px + 8, py + 4, 16, 6); R("#7a4a2a", px + 8, py + 10, 16, 12); R("#5c3720", px + 9, py + 22, 3, 6); R("#5c3720", px + 20, py + 22, 3, 6); break;
+    case "K": R("#5c3a22", px, py, 32, 32); R("#7b5233", px, py, 32, 10); R("#4a2e1b", px, py + 30, 32, 2); break;
+    case "P": R("#b5653a", px + 9, py + 20, 14, 10);
+              ctx.fillStyle = "#3f8f4a"; ctx.beginPath(); ctx.arc(px + 16, py + 12, 9, 0, 7); ctx.fill();
+              ctx.fillStyle = "#56a85f"; ctx.beginPath(); ctx.arc(px + 12, py + 10, 4, 0, 7); ctx.fill(); break;
+    case "b": R("#5a3a22", px + 1, py + 1, 30, 31);
+              ["#c0392b", "#2e86c1", "#27ae60", "#f1c40f", "#8e44ad", "#e67e22"].forEach((c, i) => R(c, px + 4 + (i % 3) * 8, py + 4 + Math.floor(i / 3) * 14, 6, 11)); break;
+    case "M": R("#f2f5f7", px + 2, py + 2, 28, 30); R("#bfe0ee", px + 5, py + 5, 22, 12); R("#bfe0ee", px + 5, py + 19, 22, 10);
+              R("#e74c3c", px + 14, py + 7, 4, 8); R("#e74c3c", px + 12, py + 9, 8, 4); break;
+    case "c": R("#39424e", px + 1, py + 6, 30, 24); R(frame % 60 < 30 || S.ch === 1 ? "#5fe3a1" : "#ff5c5c", px + 5, py + 9, 22, 8);
+              R("#f1c40f", px + 6, py + 21, 4, 4); R("#e74c3c", px + 14, py + 21, 4, 4); break;
+    case "H": ctx.strokeStyle = "#8a5a2b"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(px + 16, py + 16, 11, 0, 7); ctx.stroke();
+              for (let a = 0; a < 6.28; a += 0.785) R("#8a5a2b", px + 15 + Math.cos(a) * 13, py + 15 + Math.sin(a) * 13, 3, 3); break;
+    case "p": R("#111", px + 1, py + 2, 30, 26); R("#fff", px + 3, py + 20, 26, 6);
+              for (let i = 0; i < 6; i++) R("#111", px + 6 + i * 4, py + 20, 2, 4); break;
+    case "o": ctx.strokeStyle = "#f06a2a"; ctx.lineWidth = 6; ctx.beginPath(); ctx.arc(px + 16, py + 16, 10, 0, 7); ctx.stroke();
+              R("#fff", px + 14, py + 3, 4, 6); R("#fff", px + 14, py + 23, 4, 6); R("#fff", px + 3, py + 14, 6, 4); R("#fff", px + 23, py + 14, 6, 4); break;
+    case "g": R("#8a5a2b", px + 6, py + 10, 20, 18); R("#6b4320", px + 6, py + 16, 20, 2); R("#3a2414", px + 12, py + 6, 8, 4); break;
+    case "n": R("#6b4a2f", px + 4, py + 8, 24, 22); R("#4e331f", px + 6, py + 18, 20, 2);
+              if (S.map === "suite") { R("#7a4a1c", px + 12, py + 2, 8, 10); R("#d9d9d9", px + 12, py + 1, 8, 3); } break;
+  }
+}
+
+function drawPerson(px, py, dir, step, look) {
+  let rows = dir === "up" ? BODY_UP.slice() : dir === "down" ? BODY_DOWN.slice() : BODY_LEFT.slice();
+  if (step) {
+    if (dir === "up" || dir === "down") {
+      if (step === 1) { rows[14] = "..PPP..BBB.."; rows[15] = "..BBB......."; }
+      else { rows[14] = "..BBB..PPP.."; rows[15] = ".......BBB.."; }
+    } else { rows[14] = "..PP....PP.."; rows[15] = "..BB....BB.."; }
+  }
+  if (look.long && dir !== "up") {
+    rows = rows.map((r, i) => (i >= 3 && i <= 8) ? (dir === "down" ? "." + "H" + r.slice(2, 10) + "H" + "." : r.slice(0, 9) + "HH" + ".") : r);
+  }
+  if (look.hat) { rows[0] = "...AAAAAA..."; rows[1] = "..AAAAAAAA.."; rows[2] = ".AAAAAAAAAA."; }
+  if (look.glasses && dir === "down") rows[4] = "..SGGSSGGS..";
+  if (look.glasses && dir === "left") rows[4] = "..GGSSSSHH..";
+  const col = { H: look.hair, S: look.skin, E: "#2a1f1f", C: look.shirt, P: look.pants, B: look.shoes, A: look.hat, G: "#9fd3f0" };
+  const flip = dir === "right";
+  ctx.fillStyle = "rgba(0,0,0,0.25)"; ctx.beginPath(); ctx.ellipse(px + 16, py + 30, 9, 3, 0, 0, 7); ctx.fill();
+  for (let r = 0; r < 16; r++) for (let c = 0; c < 12; c++) {
+    const k = rows[r][c];
+    if (k === ".") continue;
+    R(col[k], px + 4 + (flip ? 11 - c : c) * 2, py + r * 2 - 2, 2, 2);
+  }
+}
+
+// 글자를 상자 너비에 맞게 여러 줄로 나누기
+function wrap(text, maxW) {
+  const out = [];
+  for (const para of text.split("\n")) {
+    let line = "";
+    for (const ch of para) {
+      if (ctx.measureText(line + ch).width > maxW) { out.push(line); line = ch; } else line += ch;
+    }
+    out.push(line);
+  }
+  return out;
+}
+
+function box(x, y, w, h) {
+  R("rgba(12,16,34,0.92)", x, y, w, h);
+  ctx.strokeStyle = "#e8d9a8"; ctx.lineWidth = 2; ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+}
+
+function drawMessage(name, text, shown) {
+  box(10, 304, 620, 104);
+  if (name) {
+    ctx.font = "bold 15px " + FONT;
+    const w = ctx.measureText(name).width + 24;
+    box(14, 280, w, 28);
+    ctx.fillStyle = "#ffd76b"; ctx.fillText(name, 26, 299);
+  }
+  ctx.font = "17px " + FONT; ctx.fillStyle = "#fff";
+  const lines = wrap(text.slice(0, Math.floor(shown)), 590);
+  lines.slice(0, 4).forEach((l, i) => ctx.fillText(l, 26, 334 + i * 23));
+  if (shown >= text.length && frame % 40 < 25) { ctx.fillStyle = "#ffd76b"; ctx.fillText("▼", 606, 398); }
+}
+
+function drawNote() {
+  box(40, 30, 560, 356);
+  ctx.font = "bold 18px " + FONT; ctx.fillStyle = "#ffd76b";
+  ctx.fillText("📒 단서 수첩  (" + S.clues.length + "/13)", 60, 62);
+  ctx.font = "13px " + FONT; ctx.fillStyle = "#c9c9c9";
+  ctx.fillText(NOTE.present ? "제시할 증거를 고르세요 · Space 제시 · X 취소" : "↑↓ 고르기 · X 또는 C 닫기", 60, 84);
+  if (!S.clues.length) { ctx.font = "16px " + FONT; ctx.fillStyle = "#fff"; ctx.fillText("아직 모은 단서가 없다.", 60, 130); return; }
+  const start = Math.max(0, Math.min(NOTE.idx - 5, S.clues.length - 11));
+  ctx.font = "15px " + FONT;
+  S.clues.slice(start, start + 11).forEach((id, i) => {
+    const sel = start + i === NOTE.idx;
+    if (sel) R("rgba(255,215,107,0.25)", 52, 98 + i * 25, 200, 24);
+    ctx.fillStyle = sel ? "#ffd76b" : "#fff";
+    ctx.fillText((sel ? "▶ " : "   ") + CLUES[id].name, 58, 116 + i * 25);
+  });
+  R("rgba(255,255,255,0.2)", 262, 100, 2, 270);
+  const c = CLUES[S.clues[NOTE.idx]];
+  ctx.font = "bold 17px " + FONT; ctx.fillStyle = "#ffd76b"; ctx.fillText(c.name, 280, 120);
+  ctx.font = "15px " + FONT; ctx.fillStyle = "#fff";
+  wrap(c.desc, 300).forEach((l, i) => ctx.fillText(l, 280, 150 + i * 23));
+}
+
+function drawTitle() {
+  R("#0e1d3a", 0, 0, 640, 416);
+  for (let i = 0; i < 40; i++) R("rgba(255,255,255,0.6)", (i * 97) % 640, (i * 53) % 200, 2, 2);
+  for (let x = 0; x < 20; x++) for (let y = 9; y < 13; y++) {
+    R("#1d3c66", x * 32, y * 32, 32, 32);
+    const o = (frame / 4 + x * 7 + y * 13) % 32;
+    R("rgba(255,255,255,0.2)", x * 32 + o % 24, y * 32 + 10, 8, 2);
+  }
+  // 배 실루엣
+  R("#f2f2f2", 150, 250, 340, 40); R("#c0392b", 150, 285, 340, 8);
+  R("#e6e6e6", 200, 222, 230, 28); R("#d9d9d9", 250, 198, 130, 24); R("#2c3e50", 300, 170, 20, 28);
+  for (let i = 0; i < 9; i++) R(frame % 80 < 40 && i % 3 === 0 ? "#ffe46b" : "#9fd3f0", 210 + i * 24, 230, 10, 8);
+  ctx.textAlign = "center";
+  ctx.font = "bold 40px " + FONT; ctx.fillStyle = "#ffd76b"; ctx.fillText("크루즈 살인사건", 320, 90);
+  ctx.font = "18px " + FONT; ctx.fillStyle = "#c9d6ee"; ctx.fillText("— 오로라호의 밤 —", 320, 124);
+  titleOptions().forEach((o, i) => {
+    ctx.font = (i === titleIdx ? "bold " : "") + "20px " + FONT;
+    ctx.fillStyle = i === titleIdx ? "#ffd76b" : "#ffffff";
+    ctx.fillText((i === titleIdx ? "▶ " : "") + o, 320, 352 + i * 30);
+  });
+  ctx.font = "13px " + FONT; ctx.fillStyle = "#8fa3c7";
+  ctx.fillText("방향키 이동 · Space 결정/조사 · C 단서 수첩", 320, 408);
+  ctx.textAlign = "left";
+}
+
+function draw() {
+  if (scene === "title") { drawTitle(); drawFade(); return; }
+  if (scene === "end") {
+    R("#000", 0, 0, 640, 416); ctx.textAlign = "center";
+    ctx.font = "bold 34px " + FONT; ctx.fillStyle = "#ffd76b"; ctx.fillText("THE END", 320, 170);
+    ctx.font = "18px " + FONT; ctx.fillStyle = "#fff";
+    ctx.fillText("크루즈 살인사건을 해결했어요! 🎉", 320, 215);
+    ctx.fillText("모은 단서 " + S.clues.length + " / 13", 320, 250);
+    ctx.font = "15px " + FONT; ctx.fillStyle = "#aaa"; ctx.fillText("Space 를 누르면 처음 화면으로", 320, 320);
+    ctx.textAlign = "left"; return;
+  }
+  const m = MAPOF();
+  for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) drawTile(m.rows[y][x], x, y);
+
+  // 반짝이는 단서
+  if (!busy) for (const s of spots()) {
+    if (s.clue && !has(s.clue) && (frame + s.x * 9) % 50 < 30) {
+      R("#fff7c2", s.x * 32 + 14, s.y * 32 + 6, 4, 4); R("#fff7c2", s.x * 32 + 12, s.y * 32 + 8, 8, 1); R("#fff7c2", s.x * 32 + 15, s.y * 32 + 3, 1, 10);
+    }
+  }
+
+  // 이름표 (복도)
+  if (m.labels) {
+    ctx.font = "bold 12px " + FONT; ctx.textAlign = "center";
+    for (const l of m.labels) {
+      const w = ctx.measureText(l.t).width + 10;
+      const cx = Math.max(w / 2 + 2, Math.min(638 - w / 2, l.x * 32 + 16));
+      R("rgba(0,0,0,0.65)", cx - w / 2, l.y * 32 + 8, w, 17);
+      ctx.fillStyle = "#ffe9a8"; ctx.fillText(l.t, cx, l.y * 32 + 21);
+    }
+    ctx.textAlign = "left";
+  }
+
+  // 사람들 (위쪽에 있는 사람부터 그려요)
+  const people = npcs().filter(n => !n.gone).map(n => {
+    let x = n.x, y = n.y, step = 0;
+    if (n.walk) { const [dx, dy] = DIRS[n.walk.dir]; x += dx * n.walk.prog; y += dy * n.walk.prog; step = n.walk.prog < 0.5 ? (n.walk.steps % 2 ? 1 : 3) : 0; }
+    return { x, y, dir: n.dir, step, look: LOOKS[n.id] };
+  });
+  let px = P.x, py = P.y, pstep = 0;
+  if (P.moving) { px = P.fx + (P.x - P.fx) * P.prog; py = P.fy + (P.y - P.fy) * P.prog; pstep = P.prog < 0.5 ? (P.foot ? 1 : 3) : 0; }
+  people.push({ x: px, y: py, dir: P.dir, step: pstep, look: LOOKS.danbi });
+  people.sort((a, b) => a.y - b.y).forEach(p => drawPerson(p.x * 32, p.y * 32, p.dir, p.step, p.look));
+
+  // 날씨와 시간
+  if (S.map === "deck") {
+    if (S.f.dawn) R("rgba(255,150,170,0.18)", 0, 0, 640, 416);
+    else if (S.ch === 1) R("rgba(255,140,60,0.15)", 0, 0, 640, 416);
+    else {
+      R("rgba(10,20,50,0.35)", 0, 0, 640, 416);
+      ctx.strokeStyle = "rgba(200,220,255,0.5)"; ctx.lineWidth = 1; ctx.beginPath();
+      for (let i = 0; i < 70; i++) { const rx = (i * 83 + frame * 3) % 660 - 10, ry = (i * 47 + frame * 9) % 430; ctx.moveTo(rx, ry); ctx.lineTo(rx - 4, ry + 12); }
+      ctx.stroke();
+    }
+  } else if (S.ch === 1 && S.f.dinnerDone) R("rgba(10,10,40,0.18)", 0, 0, 640, 416);
+
+  // 장소 이름 + 할 일
+  ctx.font = "bold 14px " + FONT;
+  const place = m.name + (S.ch <= 3 ? "  ·  " + ["", "제1장 출항", "제2장 죽음의 스위트룸", "제3장 숨겨진 진실"][S.ch] : "");
+  R("rgba(0,0,0,0.6)", 6, 6, ctx.measureText(place).width + 16, 22);
+  ctx.fillStyle = "#fff"; ctx.fillText(place, 14, 22);
+  const obj = objectiveList();
+  if (obj.length && !S.inShowdown && !CUT) {
+    const t = "🎯 " + obj[0] + (obj.length > 1 ? "  (외 " + (obj.length - 1) + "개)" : "");
+    ctx.font = "13px " + FONT;
+    R("rgba(0,0,0,0.6)", 6, 30, ctx.measureText(t).width + 16, 21);
+    ctx.fillStyle = "#ffd76b"; ctx.fillText(t, 14, 45);
+  }
+  if (S.inShowdown) {
+    ctx.font = "20px " + FONT; ctx.fillStyle = "#ff5c7a";
+    ctx.fillText("❤".repeat(S.hearts) + "♡".repeat(5 - S.hearts), 500, 26);
+  }
+
+  // 화면 어둡게 (대화창은 그 위에 보여요)
+  if (fadeAlpha > 0) R("rgba(0,0,0," + fadeAlpha + ")", 0, 0, 640, 416);
+
+  // 창들
+  if (MSG) drawMessage(MSG.name, MSG.text, MSG.shown);
+  if (CHOICE) {
+    drawMessage(null, CHOICE.question, 999);
+    ctx.font = "16px " + FONT;
+    const w = Math.max(...CHOICE.options.map(o => ctx.measureText(o).width)) + 50;
+    const h = CHOICE.options.length * 30 + 14;
+    box(626 - w, 296 - h, w, h);
+    CHOICE.options.forEach((o, i) => {
+      ctx.fillStyle = i === CHOICE.idx ? "#ffd76b" : "#fff";
+      ctx.fillText((i === CHOICE.idx ? "▶ " : "   ") + o, 640 - w, 296 - h + 30 + i * 30);
+    });
+  }
+  if (NOTE) drawNote();
+  drawCard();
+}
+
+function drawFade() {
+  if (fadeAlpha > 0) R("rgba(0,0,0," + fadeAlpha + ")", 0, 0, 640, 416);
+}
+function drawCard() {
+  if (CARD) {
+    R("#000", 0, 0, 640, 416); ctx.textAlign = "center";
+    ctx.font = "bold 30px " + FONT; ctx.fillStyle = "#ffd76b"; ctx.fillText(CARD.title, 320, 190);
+    ctx.font = "20px " + FONT; ctx.fillStyle = "#fff"; ctx.fillText(CARD.sub, 320, 232);
+    ctx.textAlign = "left";
+  }
+}
+
+
+// ----- 19. 시작! (1초에 60번 업데이트하고 그리기) -----
+function loop() {
+  update();
+  draw();
+  pressed.clear();
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
 </body>
 </html>
